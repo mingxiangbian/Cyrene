@@ -1,4 +1,4 @@
-import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, rm, symlink, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
@@ -69,6 +69,24 @@ describe('search tools', () => {
     expect(result.content).toContain('outside current working directory')
   })
 
+  it('glob skips files reached through symlinks outside cwd', async () => {
+    const parent = await createTempRoot('glob-symlink-test-')
+    const root = join(parent, 'project')
+    const outside = join(parent, 'outside')
+    await mkdir(root, { recursive: true })
+    await mkdir(outside, { recursive: true })
+    await writeFile(join(outside, 'secret.txt'), 'secret\n', 'utf8')
+    await symlink(outside, join(root, 'link'))
+
+    const result = await globTool.execute(
+      { pattern: 'link/*.txt' },
+      { config: createDefaultConfig(root), trackedFiles: new Set<string>() }
+    )
+
+    expect(result.ok).toBe(true)
+    expect(result.content).toBe('No files matched.')
+  })
+
   it('grep finds matching lines with path, line number, and line content', async () => {
     const root = await createTempRoot('grep-test-')
     await mkdir(join(root, 'src'), { recursive: true })
@@ -115,6 +133,24 @@ describe('search tools', () => {
 
     expect(result.ok).toBe(false)
     expect(result.content).toContain('outside current working directory')
+  })
+
+  it('grep skips files reached through symlinks outside cwd', async () => {
+    const parent = await createTempRoot('grep-symlink-test-')
+    const root = join(parent, 'project')
+    const outside = join(parent, 'outside')
+    await mkdir(root, { recursive: true })
+    await mkdir(outside, { recursive: true })
+    await writeFile(join(outside, 'secret.txt'), 'token\n', 'utf8')
+    await symlink(outside, join(root, 'link'))
+
+    const result = await grepTool.execute(
+      { pattern: 'token', path: 'link', include: '*.txt' },
+      { config: createDefaultConfig(root), trackedFiles: new Set<string>() }
+    )
+
+    expect(result.ok).toBe(true)
+    expect(result.content).toBe('No matches.')
   })
 
   it('grep caps output at config.grepMaxMatches and marks truncated results', async () => {

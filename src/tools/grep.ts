@@ -1,4 +1,4 @@
-import { readFile } from 'node:fs/promises'
+import { readFile, realpath } from 'node:fs/promises'
 import { isAbsolute, relative, resolve } from 'node:path'
 import { glob } from 'tinyglobby'
 import { z } from 'zod'
@@ -12,6 +12,11 @@ const schema = z.object({
 
 function isConfinedPath(path: string): boolean {
   return !isAbsolute(path) && !path.split(/[\\/]+/).includes('..')
+}
+
+function isInside(parent: string, child: string): boolean {
+  const relativePath = relative(parent, child)
+  return relativePath === '' || (!relativePath.startsWith('..') && !isAbsolute(relativePath))
 }
 
 export const grepTool: Tool<z.infer<typeof schema>> = {
@@ -54,8 +59,14 @@ export const grepTool: Tool<z.infer<typeof schema>> = {
       dot: true
     })
 
+    const canonicalCwd = await realpath(context.config.cwd)
     const matches: string[] = []
     for (const file of files.sort()) {
+      const canonicalFile = await realpath(file).catch(() => undefined)
+      if (!canonicalFile || !isInside(canonicalCwd, canonicalFile)) {
+        continue
+      }
+
       const content = await readFile(file, 'utf8').catch(() => '')
       const lines = content.split(/\r?\n/)
       for (let index = 0; index < lines.length; index += 1) {

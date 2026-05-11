@@ -1,3 +1,4 @@
+import { realpath } from 'node:fs/promises'
 import { isAbsolute, relative } from 'node:path'
 import { glob } from 'tinyglobby'
 import { z } from 'zod'
@@ -9,6 +10,11 @@ const schema = z.object({
 
 function isConfinedPattern(pattern: string): boolean {
   return !isAbsolute(pattern) && !pattern.split(/[\\/]+/).includes('..')
+}
+
+function isInside(parent: string, child: string): boolean {
+  const relativePath = relative(parent, child)
+  return relativePath === '' || (!relativePath.startsWith('..') && !isAbsolute(relativePath))
 }
 
 export const globTool: Tool<z.infer<typeof schema>> = {
@@ -39,7 +45,16 @@ export const globTool: Tool<z.infer<typeof schema>> = {
       dot: true
     })
 
-    const output = matches.map((path) => relative(context.config.cwd, path)).sort().join('\n')
+    const canonicalCwd = await realpath(context.config.cwd)
+    const confinedMatches: string[] = []
+    for (const path of matches) {
+      const canonicalPath = await realpath(path).catch(() => undefined)
+      if (canonicalPath && isInside(canonicalCwd, canonicalPath)) {
+        confinedMatches.push(path)
+      }
+    }
+
+    const output = confinedMatches.map((path) => relative(context.config.cwd, path)).sort().join('\n')
     return { ok: true, content: output || 'No files matched.' }
   }
 }
