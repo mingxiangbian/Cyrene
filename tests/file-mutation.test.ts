@@ -1,4 +1,4 @@
-import { mkdtemp, readFile, realpath, rm, stat, writeFile } from 'node:fs/promises'
+import { mkdtemp, readFile, realpath, rm, stat, symlink, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
@@ -81,6 +81,23 @@ describe('file mutation tools', () => {
     expect(result.ok).toBe(false)
     expect(result.content).toContain('outside writable roots')
     expect(await pathExists(outside)).toBe(false)
+  })
+
+  it('rejects symlink writes without creating outside directories', async () => {
+    const root = await createTempRoot('file-write-symlink-root-test-')
+    const outside = await createTempRoot('file-write-symlink-outside-test-')
+    const link = join(root, 'link')
+    const outsideCreatedDir = join(outside, 'new-dir')
+    await symlink(outside, link)
+
+    const result = await fileWriteTool.execute(
+      { file_path: join(link, 'new-dir', 'file.txt'), content: 'no\n' },
+      { config: createDefaultConfig(root), trackedFiles: new Set<string>() }
+    )
+
+    expect(result.ok).toBe(false)
+    expect(result.content).toContain('outside writable roots')
+    expect(await pathExists(outsideCreatedDir)).toBe(false)
   })
 
   it('edits only after the file was read in this session', async () => {

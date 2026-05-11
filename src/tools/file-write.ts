@@ -29,6 +29,22 @@ function isUnderWritableRoot(path: string, roots: string[]): boolean {
   return roots.some((root) => isUnderRoot(path, root))
 }
 
+async function nearestExistingCanonicalParent(parent: string): Promise<string> {
+  let current = parent
+
+  while (true) {
+    try {
+      return await realpath(current)
+    } catch {
+      const next = dirname(current)
+      if (next === current) {
+        throw new Error(`No existing parent for ${parent}`)
+      }
+      current = next
+    }
+  }
+}
+
 export const fileWriteTool: Tool<z.infer<typeof schema>> = {
   name: 'file_write',
   description: 'Create or overwrite a UTF-8 text file inside a configured writable root.',
@@ -56,6 +72,11 @@ export const fileWriteTool: Tool<z.infer<typeof schema>> = {
     }
 
     const parent = dirname(resolved)
+    const existingParent = await nearestExistingCanonicalParent(parent)
+    if (!isUnderWritableRoot(existingParent, writableRoots)) {
+      return { ok: false, content: `Refusing to write ${resolved}: outside writable roots.` }
+    }
+
     await mkdir(parent, { recursive: true })
     const canonicalParent = await realpath(parent)
 
