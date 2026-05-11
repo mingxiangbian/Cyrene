@@ -100,6 +100,24 @@ describe('file mutation tools', () => {
     expect(await pathExists(outsideCreatedDir)).toBe(false)
   })
 
+  it('rejects symlinked file writes without changing outside targets', async () => {
+    const root = await createTempRoot('file-write-file-symlink-root-test-')
+    const outside = await createTempRoot('file-write-file-symlink-outside-test-')
+    const outsideTarget = join(outside, 'target.txt')
+    const link = join(root, 'link.txt')
+    await writeFile(outsideTarget, 'original\n', 'utf8')
+    await symlink(outsideTarget, link)
+
+    const result = await fileWriteTool.execute(
+      { file_path: link, content: 'changed\n' },
+      { config: createDefaultConfig(root), trackedFiles: new Set<string>() }
+    )
+
+    expect(result.ok).toBe(false)
+    expect(result.content).toContain('outside writable roots')
+    expect(await readFile(outsideTarget, 'utf8')).toBe('original\n')
+  })
+
   it('edits only after the file was read in this session', async () => {
     const root = await createTempRoot('file-edit-test-')
     const file = join(root, 'edit.txt')

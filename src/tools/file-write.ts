@@ -1,4 +1,4 @@
-import { mkdir, realpath, writeFile } from 'node:fs/promises'
+import { lstat, mkdir, realpath, writeFile } from 'node:fs/promises'
 import { dirname, isAbsolute, relative, resolve } from 'node:path'
 import { z } from 'zod'
 import type { Tool } from './types.js'
@@ -45,6 +45,15 @@ async function nearestExistingCanonicalParent(parent: string): Promise<string> {
   }
 }
 
+async function existingSymlinkTarget(path: string): Promise<string | null> {
+  try {
+    const stats = await lstat(path)
+    return stats.isSymbolicLink() ? realpath(path) : null
+  } catch {
+    return null
+  }
+}
+
 export const fileWriteTool: Tool<z.infer<typeof schema>> = {
   name: 'file_write',
   description: 'Create or overwrite a UTF-8 text file inside a configured writable root.',
@@ -81,6 +90,11 @@ export const fileWriteTool: Tool<z.infer<typeof schema>> = {
     const canonicalParent = await realpath(parent)
 
     if (!isUnderWritableRoot(canonicalParent, writableRoots)) {
+      return { ok: false, content: `Refusing to write ${resolved}: outside writable roots.` }
+    }
+
+    const symlinkTarget = await existingSymlinkTarget(resolved)
+    if (symlinkTarget && !isUnderWritableRoot(symlinkTarget, writableRoots)) {
       return { ok: false, content: `Refusing to write ${resolved}: outside writable roots.` }
     }
 
