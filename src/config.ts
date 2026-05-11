@@ -31,7 +31,7 @@ export function createDefaultConfig(cwd: string): AppConfig {
     bashDenyPatterns: [
       /\brm\b(?=.*(?:^|\s)-[A-Za-z]*r)(?=.*(?:^|\s)-[A-Za-z]*f).*\s(?:--\s+)?\//,
       /mkfs\./,
-      /\bdd\b(?=.*\bif=)(?=.*\bof=\/dev\/sd[a-z]?\b)/,
+      /\bdd\b(?=.*\bof=\/dev\/sd[a-z]?\b)/,
       />\s*\/dev\/sd/,
       /\b(?:curl|wget)\b.*\|\s*(?:ba)?sh\b/,
       /:\(\)\s*\{\s*:\|:&\s*\};:/
