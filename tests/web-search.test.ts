@@ -74,6 +74,32 @@ describe('webSearchTool', () => {
     expect(validation.success).toBe(false)
   })
 
+  it('preserves encoded percent sequences in DuckDuckGo redirect targets', async () => {
+    const html = `
+      <div class="result">
+        <a class="result__a" href="//duckduckgo.com/l/?uddg=https%3A%2F%2Fexample.com%2Fsearch%3Foff%3D50%2525">Redirect result</a>
+        <a class="result__snippet">Redirect snippet.</a>
+      </div>
+    `
+
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      text: async () => html
+    }))
+
+    const result = await webSearchTool.execute({ query: 'discount' }, context())
+
+    expect(result.ok).toBe(true)
+    expect(result.metadata?.results).toEqual([
+      {
+        title: 'Redirect result',
+        link: 'https://example.com/search?off=50%25',
+        snippet: 'Redirect snippet.'
+      }
+    ])
+  })
+
   it('returns ok false when fetch fails', async () => {
     vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new Error('network down')))
 

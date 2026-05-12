@@ -31,7 +31,7 @@ function normalizeLink(link: string): string {
   const decoded = decodeHtml(link)
   const url = new URL(decoded, DDG_URL)
   const unwrapped = url.searchParams.get('uddg')
-  return unwrapped ? decodeURIComponent(unwrapped) : url.toString()
+  return unwrapped ?? url.toString()
 }
 
 function parseResults(html: string): SearchResult[] {
