@@ -12,9 +12,10 @@ describe('createCoreTools', () => {
       'file_edit',
       'grep',
       'glob',
+      'web_search',
       'ask_user'
     ])
     expect(names).not.toContain('task')
-    expect(names.length).toBeLessThanOrEqual(8)
+    expect(names.length).toBeLessThanOrEqual(9)
   })
 })

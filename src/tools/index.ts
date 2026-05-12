@@ -5,6 +5,7 @@ import { fileReadTool } from './file-read.js'
 import { fileWriteTool } from './file-write.js'
 import { globTool } from './glob.js'
 import { grepTool } from './grep.js'
+import { webSearchTool } from './web-search.js'
 import type { Tool, ToolCall, ToolContext, ToolResult } from './types.js'
 
 export function createCoreTools(): Tool<unknown>[] {
@@ -15,6 +16,7 @@ export function createCoreTools(): Tool<unknown>[] {
     fileEditTool,
     grepTool,
     globTool,
+    webSearchTool,
     askUserTool
   ] as Tool<unknown>[]
 }
