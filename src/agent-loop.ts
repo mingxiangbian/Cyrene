@@ -6,8 +6,9 @@ import type { Tool, ToolContext } from './tools/types.js'
 
 export interface RunAgentLoopInput {
   config: AppConfig
-  systemPrompt: string
-  userPrompt: string
+  systemPrompt?: string
+  userPrompt?: string
+  messages?: ChatMessage[]
   tools: Tool<unknown>[]
   callModel?: (input: {
     config: AppConfig
@@ -22,7 +23,12 @@ export interface RunAgentLoopResult {
 }
 
 export async function runAgentLoop(input: RunAgentLoopInput): Promise<RunAgentLoopResult> {
-  const messages = buildInitialMessages(input.systemPrompt, input.userPrompt)
+  const messages =
+    input.messages ??
+    buildInitialMessages(
+      requireText(input.systemPrompt, 'systemPrompt'),
+      requireText(input.userPrompt, 'userPrompt')
+    )
   const callModel = input.callModel ?? defaultCallModel
   const context: ToolContext = {
     config: input.config,
@@ -42,8 +48,10 @@ export async function runAgentLoop(input: RunAgentLoopInput): Promise<RunAgentLo
       if (response.content.trim().length === 0) {
         emptyFinalResponseCount += 1
         if (emptyFinalResponseCount > 1) {
+          const finalText = 'Model returned an empty response. Try rephrasing the request or asking for a smaller step.'
+          messages.push({ role: 'assistant', content: finalText })
           return {
-            finalText: 'Model returned an empty response. Try rephrasing the request or asking for a smaller step.',
+            finalText,
             toolCallCount
           }
         }
@@ -56,6 +64,7 @@ export async function runAgentLoop(input: RunAgentLoopInput): Promise<RunAgentLo
         continue
       }
 
+      messages.push({ role: 'assistant', content: response.content })
       return { finalText: response.content, toolCallCount }
     }
 
@@ -90,8 +99,18 @@ export async function runAgentLoop(input: RunAgentLoopInput): Promise<RunAgentLo
     }
   }
 
+  const finalText = `Stopped after ${input.config.maxToolCallsPerTurn} tool calls to avoid an infinite loop.`
+  messages.push({ role: 'assistant', content: finalText })
   return {
-    finalText: `Stopped after ${input.config.maxToolCallsPerTurn} tool calls to avoid an infinite loop.`,
+    finalText,
     toolCallCount
   }
+}
+
+function requireText(value: string | undefined, name: string): string {
+  if (value === undefined) {
+    throw new Error(`${name} is required`)
+  }
+
+  return value
 }

@@ -5,6 +5,7 @@ import chalk from 'chalk'
 import { Command } from 'commander'
 import { runAgentLoop } from './agent-loop.js'
 import { createDefaultConfig } from './config.js'
+import { runRepl } from './repl.js'
 import { createCoreTools } from './tools/index.js'
 
 const program = new Command()
@@ -13,14 +14,15 @@ async function main(): Promise<void> {
   program
     .name('cc-local')
     .description('Local Claude Code-style agent powered by an OpenAI-compatible MLX server.')
-    .argument('<prompt...>', 'task for the agent')
+    .argument('[prompt...]', 'task for the agent')
     .option('--cwd <path>', 'working directory', process.cwd())
+    .option('--repl', 'start an interactive session')
 
   program.parse()
 
-  const options = program.opts<{ cwd: string }>()
+  const options = program.opts<{ cwd: string; repl?: boolean }>()
   const prompt = program.args.join(' ').trim()
-  if (!prompt) {
+  if (!options.repl && !prompt) {
     console.error('Prompt cannot be empty.')
     process.exit(1)
   }
@@ -30,6 +32,11 @@ async function main(): Promise<void> {
   const systemPrompt = await readFile(systemPromptPath, 'utf8')
   const config = createDefaultConfig(resolve(options.cwd))
   const tools = createCoreTools()
+
+  if (options.repl) {
+    await runRepl({ config, systemPrompt, tools })
+    return
+  }
 
   const result = await runAgentLoop({
     config,
