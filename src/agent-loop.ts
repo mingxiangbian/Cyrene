@@ -4,11 +4,8 @@ import { callModel as defaultCallModel, type ChatMessage, type ModelResponse } f
 import { executeToolCall, toolDefinitions } from './tools/index.js'
 import type { Tool, ToolContext } from './tools/types.js'
 
-export interface RunAgentLoopInput {
+interface RunAgentLoopBaseInput {
   config: AppConfig
-  systemPrompt?: string
-  userPrompt?: string
-  messages?: ChatMessage[]
   tools: Tool<unknown>[]
   callModel?: (input: {
     config: AppConfig
@@ -17,18 +14,27 @@ export interface RunAgentLoopInput {
   }) => Promise<ModelResponse>
 }
 
+export type RunAgentLoopInput = RunAgentLoopBaseInput &
+  (
+    | {
+        systemPrompt: string
+        userPrompt: string
+        messages?: never
+      }
+    | {
+        messages: ChatMessage[]
+        systemPrompt?: never
+        userPrompt?: never
+      }
+  )
+
 export interface RunAgentLoopResult {
   finalText: string
   toolCallCount: number
 }
 
 export async function runAgentLoop(input: RunAgentLoopInput): Promise<RunAgentLoopResult> {
-  const messages =
-    input.messages ??
-    buildInitialMessages(
-      requireText(input.systemPrompt, 'systemPrompt'),
-      requireText(input.userPrompt, 'userPrompt')
-    )
+  const messages = input.messages ?? buildInitialMessages(input.systemPrompt, input.userPrompt)
   const callModel = input.callModel ?? defaultCallModel
   const context: ToolContext = {
     config: input.config,
@@ -69,13 +75,15 @@ export async function runAgentLoop(input: RunAgentLoopInput): Promise<RunAgentLo
     }
 
     emptyFinalResponseCount = 0
+    const remainingToolCalls = input.config.maxToolCallsPerTurn - toolCallCount
+    const toolCallsToRun = response.toolCalls.slice(0, remainingToolCalls)
     messages.push({
       role: 'assistant',
       content: response.content,
-      tool_calls: response.toolCalls
+      tool_calls: toolCallsToRun
     })
 
-    for (const toolCall of response.toolCalls) {
+    for (const toolCall of toolCallsToRun) {
       toolCallCount += 1
       const result = await executeToolCall(
         {
@@ -105,12 +113,4 @@ export async function runAgentLoop(input: RunAgentLoopInput): Promise<RunAgentLo
     finalText,
     toolCallCount
   }
-}
-
-function requireText(value: string | undefined, name: string): string {
-  if (value === undefined) {
-    throw new Error(`${name} is required`)
-  }
-
-  return value
 }

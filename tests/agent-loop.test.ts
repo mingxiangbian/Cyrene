@@ -142,4 +142,57 @@ describe('runAgentLoop', () => {
     expect(result.finalText).toBe('final after second retry')
     expect(result.toolCallCount).toBe(2)
   })
+
+  it('persists only tool calls that receive tool messages when the turn budget is reached', async () => {
+    const config = createDefaultConfig('/tmp/project')
+    config.maxToolCallsPerTurn = 1
+    const messages: ChatMessage[] = [
+      { role: 'system', content: 'system' },
+      { role: 'user', content: 'echo' }
+    ]
+
+    const result = await runAgentLoop({
+      config,
+      messages,
+      tools: [echoTool],
+      callModel: async (): Promise<ModelResponse> => ({
+        content: '',
+        toolCalls: [
+          {
+            id: 'call-1',
+            type: 'function',
+            function: { name: 'echo', arguments: '{"text":"first"}' }
+          },
+          {
+            id: 'call-2',
+            type: 'function',
+            function: { name: 'echo', arguments: '{"text":"second"}' }
+          }
+        ]
+      })
+    })
+
+    expect(result.toolCallCount).toBe(1)
+    expect(messages).toContainEqual({
+      role: 'assistant',
+      content: '',
+      tool_calls: [
+        {
+          id: 'call-1',
+          type: 'function',
+          function: { name: 'echo', arguments: '{"text":"first"}' }
+        }
+      ]
+    })
+    expect(messages).toContainEqual({
+      role: 'tool',
+      tool_call_id: 'call-1',
+      content: 'first'
+    })
+    expect(messages).not.toContainEqual({
+      role: 'tool',
+      tool_call_id: 'call-2',
+      content: 'second'
+    })
+  })
 })
