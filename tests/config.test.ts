@@ -23,6 +23,8 @@ describe('createDefaultConfig', () => {
     expect(config.grepMaxMatches).toBe(30)
     expect(config.bashTimeoutMs).toBe(120_000)
     expect(config.llmRequestTimeoutMs).toBe(180_000)
+    expect(config.llmRetryMaxAttempts).toBe(3)
+    expect(config.llmRetryBaseDelayMs).toBe(1_000)
     expect(config.writableRoots).toEqual(['/tmp/project'])
   })
 

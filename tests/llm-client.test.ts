@@ -89,10 +89,12 @@ describe('callModel', () => {
       'fetch',
       vi.fn().mockResolvedValue(new Response('model unavailable', { status: 503 }))
     )
+    const config = createDefaultConfig('/tmp/project')
+    config.llmRetryBaseDelayMs = 1
 
     await expect(
       callModel({
-        config: createDefaultConfig('/tmp/project'),
+        config,
         messages: [{ role: 'user', content: 'Hello' }],
         tools: []
       })
@@ -101,14 +103,59 @@ describe('callModel', () => {
 
   it('throws a helpful error when the endpoint cannot be reached', async () => {
     vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new TypeError('fetch failed')))
+    const config = createDefaultConfig('/tmp/project')
+    config.llmRetryBaseDelayMs = 1
 
     await expect(
       callModel({
-        config: createDefaultConfig('/tmp/project'),
+        config,
         messages: [{ role: 'user', content: 'Hello' }],
         tools: []
       })
     ).rejects.toThrow('LLM request failed: fetch failed')
+  })
+
+  it('retries retryable failures before returning a successful response', async () => {
+    const fetch = vi
+      .fn()
+      .mockResolvedValueOnce(new Response('temporarily unavailable', { status: 503 }))
+      .mockRejectedValueOnce(new TypeError('fetch failed'))
+      .mockResolvedValue(
+        new Response(
+          JSON.stringify({
+            choices: [{ message: { content: 'recovered' } }]
+          }),
+          { status: 200 }
+        )
+      )
+    vi.stubGlobal('fetch', fetch)
+    const config = createDefaultConfig('/tmp/project')
+    config.llmRetryBaseDelayMs = 1
+
+    const result = await callModel({
+      config,
+      messages: [{ role: 'user', content: 'Hello' }],
+      tools: []
+    })
+
+    expect(result).toEqual({ content: 'recovered', toolCalls: [] })
+    expect(fetch).toHaveBeenCalledTimes(3)
+  })
+
+  it('does not retry non-retryable client errors', async () => {
+    const fetch = vi.fn().mockResolvedValue(new Response('bad request', { status: 400 }))
+    vi.stubGlobal('fetch', fetch)
+    const config = createDefaultConfig('/tmp/project')
+    config.llmRetryBaseDelayMs = 1
+
+    await expect(
+      callModel({
+        config,
+        messages: [{ role: 'user', content: 'Hello' }],
+        tools: []
+      })
+    ).rejects.toThrow('LLM request failed with HTTP 400: bad request')
+    expect(fetch).toHaveBeenCalledTimes(1)
   })
 
   it('aborts requests that exceed the configured timeout', async () => {
@@ -125,6 +172,7 @@ describe('callModel', () => {
 
     const config = createDefaultConfig('/tmp/project')
     config.llmRequestTimeoutMs = 50
+    config.llmRetryMaxAttempts = 1
     const request = callModel({
       config,
       messages: [{ role: 'user', content: 'Hello' }],
