@@ -9,7 +9,7 @@ if [[ ! -x "${PYTHON}" ]]; then
   PYTHON="python"
 fi
 
-"${PYTHON}" -m mlx_lm serve \
+"${PYTHON}" -m mlx_lm server \
   --model "${MODEL_PATH}" \
   --host 127.0.0.1 \
   --port 8080
