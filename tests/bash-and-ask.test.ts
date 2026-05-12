@@ -46,6 +46,37 @@ describe('bash and ask_user tools', () => {
     expect(result.content).toContain('deny-listed')
   })
 
+  it('bash times out shell child processes before natural completion', async () => {
+    const root = await createTempRoot('bash-timeout-test-')
+    const startedAt = Date.now()
+
+    const result = await bashTool.execute(
+      { command: 'sleep 2; echo done' },
+      {
+        config: { ...createDefaultConfig(root), bashTimeoutMs: 100 },
+        trackedFiles: new Set<string>()
+      }
+    )
+
+    expect(Date.now() - startedAt).toBeLessThan(1500)
+    expect(result.ok).toBe(false)
+    expect(result.content).toMatch(/Timed out: yes|killed/i)
+    expect(result.content).not.toContain('done')
+  })
+
+  it('bash caps captured stdout', async () => {
+    const root = await createTempRoot('bash-output-cap-test-')
+
+    const result = await bashTool.execute(
+      { command: 'node -e "process.stdout.write(\'x\'.repeat(200000))"' },
+      { config: createDefaultConfig(root), trackedFiles: new Set<string>() }
+    )
+
+    expect(result.ok).toBe(true)
+    expect(result.content).toContain('[stdout truncated after 65536 bytes]')
+    expect(result.content.length).toBeLessThan(200000)
+  })
+
   it('ask_user returns a clarification request', async () => {
     const result = await askUserTool.execute(
       { question: 'Which file should I update?' },
