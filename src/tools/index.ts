@@ -1,4 +1,23 @@
+import { askUserTool } from './ask-user.js'
+import { bashTool } from './bash.js'
+import { fileEditTool } from './file-edit.js'
+import { fileReadTool } from './file-read.js'
+import { fileWriteTool } from './file-write.js'
+import { globTool } from './glob.js'
+import { grepTool } from './grep.js'
 import type { Tool, ToolCall, ToolContext, ToolResult } from './types.js'
+
+export function createCoreTools(): Tool<unknown>[] {
+  return [
+    bashTool,
+    fileReadTool,
+    fileWriteTool,
+    fileEditTool,
+    grepTool,
+    globTool,
+    askUserTool
+  ] as Tool<unknown>[]
+}
 
 export function toolDefinitions(tools: Tool<unknown>[]) {
   return tools.map((tool) => ({
