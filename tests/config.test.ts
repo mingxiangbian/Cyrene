@@ -22,6 +22,7 @@ describe('createDefaultConfig', () => {
     expect(config.readMaxInlineLines).toBe(500)
     expect(config.grepMaxMatches).toBe(30)
     expect(config.bashTimeoutMs).toBe(120_000)
+    expect(config.llmRequestTimeoutMs).toBe(180_000)
     expect(config.writableRoots).toEqual(['/tmp/project'])
   })
 

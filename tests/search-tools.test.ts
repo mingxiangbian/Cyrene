@@ -101,6 +101,24 @@ describe('search tools', () => {
     expect(result.content).toBe('src/a.ts:1: const token = "abc"')
   })
 
+  it('grep handles regex flags without skipping later lines', async () => {
+    const root = await createTempRoot('grep-flags-test-')
+    await mkdir(join(root, 'src'), { recursive: true })
+    await writeFile(join(root, 'src', 'a.ts'), 'foo one\nfoo two\nfoo three\n', 'utf8')
+
+    const result = await grepTool.execute(
+      { pattern: '/foo/g', path: 'src', include: '*.ts' },
+      { config: createDefaultConfig(root), trackedFiles: new Set<string>() }
+    )
+
+    expect(result.ok).toBe(true)
+    expect(result.content.split('\n')).toEqual([
+      'src/a.ts:1: foo one',
+      'src/a.ts:2: foo two',
+      'src/a.ts:3: foo three'
+    ])
+  })
+
   it('grep rejects parent directory traversal paths', async () => {
     const parent = await createTempRoot('grep-path-traversal-test-')
     const root = join(parent, 'project')

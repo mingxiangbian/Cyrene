@@ -5,6 +5,7 @@ import { createDefaultConfig } from '../src/config.js'
 describe('callModel', () => {
   afterEach(() => {
     vi.unstubAllGlobals()
+    vi.useRealTimers()
   })
 
   it('posts an OpenAI-compatible chat completion request and returns content', async () => {
@@ -42,6 +43,7 @@ describe('callModel', () => {
     expect(fetch).toHaveBeenCalledWith('http://127.0.0.1:8080/v1/chat/completions', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
+      signal: expect.any(AbortSignal),
       body: JSON.stringify({
         model: 'local-model',
         temperature: 0.2,
@@ -107,5 +109,30 @@ describe('callModel', () => {
         tools: []
       })
     ).rejects.toThrow('LLM request failed: fetch failed')
+  })
+
+  it('aborts requests that exceed the configured timeout', async () => {
+    vi.useFakeTimers()
+    vi.stubGlobal(
+      'fetch',
+      vi.fn((_url, init) => {
+        const signal = (init as RequestInit).signal
+        return new Promise((_resolve, reject) => {
+          signal?.addEventListener('abort', () => reject(new Error('aborted')))
+        })
+      })
+    )
+
+    const config = createDefaultConfig('/tmp/project')
+    config.llmRequestTimeoutMs = 50
+    const request = callModel({
+      config,
+      messages: [{ role: 'user', content: 'Hello' }],
+      tools: []
+    })
+
+    await vi.advanceTimersByTimeAsync(50)
+
+    await expect(request).rejects.toThrow('LLM request failed: aborted')
   })
 })

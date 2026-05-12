@@ -44,6 +44,7 @@ export async function callModel(input: CallModelInput): Promise<ModelResponse> {
     response = await fetch(`${input.config.model.baseUrl}/chat/completions`, {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
+      signal: AbortSignal.timeout(input.config.llmRequestTimeoutMs),
       body: JSON.stringify({
         model: input.config.model.model,
         temperature: input.config.model.temperature,

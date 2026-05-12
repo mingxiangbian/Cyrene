@@ -19,6 +19,15 @@ function isInside(parent: string, child: string): boolean {
   return relativePath === '' || (!relativePath.startsWith('..') && !isAbsolute(relativePath))
 }
 
+function parseRegex(pattern: string): RegExp {
+  const literal = pattern.match(/^\/(.+)\/([dgimsuvy]*)$/)
+  if (!literal) {
+    return new RegExp(pattern)
+  }
+
+  return new RegExp(literal[1], literal[2])
+}
+
 export const grepTool: Tool<z.infer<typeof schema>> = {
   name: 'grep',
   description: 'Search UTF-8 text files for a JavaScript regular expression. Returns path, line number, and matching line.',
@@ -40,7 +49,7 @@ export const grepTool: Tool<z.infer<typeof schema>> = {
   async execute(args, context) {
     let regex: RegExp
     try {
-      regex = new RegExp(args.pattern)
+      regex = parseRegex(args.pattern)
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error)
       return { ok: false, content: `Invalid regular expression: ${message}` }
@@ -70,6 +79,7 @@ export const grepTool: Tool<z.infer<typeof schema>> = {
       const content = await readFile(file, 'utf8').catch(() => '')
       const lines = content.split(/\r?\n/)
       for (let index = 0; index < lines.length; index += 1) {
+        regex.lastIndex = 0
         if (regex.test(lines[index])) {
           matches.push(`${relative(context.config.cwd, file)}:${index + 1}: ${lines[index]}`)
           if (matches.length >= context.config.grepMaxMatches) {
