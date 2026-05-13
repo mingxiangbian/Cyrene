@@ -8,6 +8,8 @@ export interface AppConfig {
   cwd: string
   model: ModelConfig
   maxToolCallsPerTurn: number
+  contextWindowTokens: number
+  autoCompactThreshold: number
   readMaxInlineLines: number
   grepMaxMatches: number
   bashTimeoutMs: number
@@ -27,6 +29,8 @@ export function createDefaultConfig(cwd: string): AppConfig {
       temperature: 0
     },
     maxToolCallsPerTurn: 10,
+    contextWindowTokens: 256_000,
+    autoCompactThreshold: 0.7,
     readMaxInlineLines: 500,
     grepMaxMatches: 30,
     bashTimeoutMs: 120_000,
