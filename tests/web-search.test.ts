@@ -74,6 +74,13 @@ describe('webSearchTool', () => {
     expect(validation.success).toBe(false)
   })
 
+  it('warns the model not to include private data in queries', () => {
+    expect(webSearchTool.description).toContain('Do not include file paths')
+    expect(webSearchTool.parameters.properties.query).toMatchObject({
+      description: expect.stringContaining('credentials')
+    })
+  })
+
   it('preserves encoded percent sequences in DuckDuckGo redirect targets', async () => {
     const html = `
       <div class="result">
@@ -107,6 +114,7 @@ describe('webSearchTool', () => {
 
     expect(result.ok).toBe(false)
     expect(result.content).toContain('network down')
+    expect(result.metadata?.errorCode).toBe('network_error')
   })
 
   it('returns ok false when DuckDuckGo returns a challenge page without results', async () => {

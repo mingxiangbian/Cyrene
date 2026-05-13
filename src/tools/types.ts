@@ -11,6 +11,9 @@ export interface JsonSchema {
 export interface ToolContext {
   config: AppConfig
   trackedFiles: Set<string>
+  unavailableTools?: Set<string>
+  webSearchConsecutiveFailures?: number
+  webSearchUnavailableNoticeAdded?: boolean
 }
 
 export interface ToolResult {

@@ -4,6 +4,9 @@ import { callModel as defaultCallModel, type ChatMessage, type ModelResponse } f
 import { executeToolCall, toolDefinitions } from './tools/index.js'
 import type { Tool, ToolContext } from './tools/types.js'
 
+const WEB_SEARCH_UNAVAILABLE_MESSAGE = 'Web search has failed twice consecutively and appears unavailable. Use grep, glob, and file_read for local-only work. Do not call web_search again in this session.'
+const WEB_SEARCH_DISABLED_RESULT = 'web_search is unavailable in this session; use local tools or ask the user to retry later.'
+
 interface RunAgentLoopBaseInput {
   config: AppConfig
   tools: Tool<unknown>[]
@@ -41,6 +44,8 @@ export async function runAgentLoop(input: RunAgentLoopInput): Promise<RunAgentLo
     config: input.config,
     trackedFiles: new Set<string>()
   }
+  context.unavailableTools ??= new Set<string>()
+  context.webSearchConsecutiveFailures ??= 0
   let toolCallCount = 0
   let emptyFinalResponseCount = 0
 
@@ -86,21 +91,32 @@ export async function runAgentLoop(input: RunAgentLoopInput): Promise<RunAgentLo
 
     for (const toolCall of toolCallsToRun) {
       toolCallCount += 1
-      const result = await executeToolCall(
-        {
-          id: toolCall.id,
-          name: toolCall.function.name,
-          argumentsText: toolCall.function.arguments
-        },
-        input.tools,
-        context
-      )
+      const result = context.unavailableTools.has(toolCall.function.name)
+        ? {
+            ok: false,
+            content: toolCall.function.name === 'web_search'
+              ? WEB_SEARCH_DISABLED_RESULT
+              : `${toolCall.function.name} is unavailable in this session; use local tools or ask the user to retry later.`
+          }
+        : await executeToolCall(
+            {
+              id: toolCall.id,
+              name: toolCall.function.name,
+              argumentsText: toolCall.function.arguments
+            },
+            input.tools,
+            context
+          )
 
       messages.push({
         role: 'tool',
         tool_call_id: toolCall.id,
         content: compactToolResult(result.content, 120)
       })
+
+      if (toolCall.function.name === 'web_search' && !context.unavailableTools.has('web_search')) {
+        updateWebSearchAvailability(context, result.ok, messages)
+      }
 
       if (toolCallCount >= input.config.maxToolCallsPerTurn) {
         break
@@ -113,5 +129,24 @@ export async function runAgentLoop(input: RunAgentLoopInput): Promise<RunAgentLo
   return {
     finalText,
     toolCallCount
+  }
+}
+
+function updateWebSearchAvailability(context: ToolContext, ok: boolean, messages: ChatMessage[]): void {
+  if (ok) {
+    context.webSearchConsecutiveFailures = 0
+    return
+  }
+
+  context.webSearchConsecutiveFailures = (context.webSearchConsecutiveFailures ?? 0) + 1
+  if (context.webSearchConsecutiveFailures < 2) {
+    return
+  }
+
+  context.unavailableTools ??= new Set<string>()
+  context.unavailableTools.add('web_search')
+  if (!context.webSearchUnavailableNoticeAdded) {
+    messages.push({ role: 'user', content: WEB_SEARCH_UNAVAILABLE_MESSAGE })
+    context.webSearchUnavailableNoticeAdded = true
   }
 }

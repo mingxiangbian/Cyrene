@@ -76,11 +76,11 @@ async function fetchWithTimeout(url: string): Promise<Response> {
 
 export const webSearchTool: Tool<z.infer<typeof schema>> = {
   name: 'web_search',
-  description: 'Search the web with DuckDuckGo HTML results and return the first five results.',
+  description: 'Search the web with DuckDuckGo HTML results and return the first five results. Do not include file paths, credentials, secrets, usernames, or personal data in queries.',
   parameters: {
     type: 'object',
     properties: {
-      query: { type: 'string', description: 'Search query.' }
+      query: { type: 'string', description: 'Search query. Do not include credentials or personal data.' }
     },
     required: ['query'],
     additionalProperties: false
@@ -96,13 +96,21 @@ export const webSearchTool: Tool<z.infer<typeof schema>> = {
     try {
       const response = await fetchWithTimeout(url)
       if (!response.ok) {
-        return { ok: false, content: `DuckDuckGo request failed with status ${response.status}` }
+        return {
+          ok: false,
+          content: `DuckDuckGo request failed with status ${response.status}`,
+          metadata: { errorCode: 'http_error', status: response.status }
+        }
       }
 
       const html = await response.text()
       const results = parseResults(html)
       if (results.length === 0 || hasChallengePage(html)) {
-        return { ok: false, content: 'DuckDuckGo request returned no search results' }
+        return {
+          ok: false,
+          content: 'DuckDuckGo request returned no search results',
+          metadata: { errorCode: hasChallengePage(html) ? 'challenge' : 'no_results' }
+        }
       }
 
       return {
@@ -112,7 +120,11 @@ export const webSearchTool: Tool<z.infer<typeof schema>> = {
       }
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error)
-      return { ok: false, content: `DuckDuckGo request failed: ${message}` }
+      return {
+        ok: false,
+        content: `DuckDuckGo request failed: ${message}`,
+        metadata: { errorCode: 'network_error' }
+      }
     }
   }
 }
