@@ -86,6 +86,8 @@ async function requestCompletion(input: CallModelInput): Promise<Response> {
     body: JSON.stringify({
       model: input.config.model.model,
       temperature: input.config.model.temperature,
+      max_tokens: 4096,
+      chat_template_kwargs: { enable_thinking: false },
       messages: input.messages,
       tools: input.tools,
       tool_choice: 'auto'
