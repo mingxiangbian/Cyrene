@@ -1,4 +1,4 @@
-import { readFile, realpath } from 'node:fs/promises'
+import { lstat, readdir, readFile, realpath } from 'node:fs/promises'
 import { isAbsolute, join, relative, resolve } from 'node:path'
 
 export async function loadInstructionsIfExists(cwd: string): Promise<string> {
@@ -68,6 +68,71 @@ export async function loadMemories(cwd: string): Promise<string> {
   }
 
   return sections.join('\n\n')
+}
+
+export async function loadRecentSummaries(cwd: string, count: number): Promise<string> {
+  if (count <= 0) {
+    return ''
+  }
+
+  const sessionsDir = join(cwd, '.cc-local', 'memory', 'sessions')
+  const cwdRealPath = await realpath(cwd)
+  const intendedCcLocalDir = join(cwdRealPath, '.cc-local')
+  let sessionsDirRealPath: string
+  let files: string[]
+
+  try {
+    sessionsDirRealPath = await realpath(sessionsDir)
+    if (!isPathInside(intendedCcLocalDir, sessionsDirRealPath)) {
+      return ''
+    }
+
+    files = await readdir(sessionsDirRealPath)
+  } catch (error) {
+    if (isMissingFileError(error)) {
+      return ''
+    }
+
+    throw error
+  }
+
+  const sessionFiles = files
+    .filter((file) => file.endsWith('.md'))
+    .sort()
+
+  if (sessionFiles.length === 0) {
+    return ''
+  }
+
+  const sections: string[] = []
+
+  for (let index = sessionFiles.length - 1; index >= 0 && sections.length < count; index--) {
+    const file = sessionFiles[index]
+    const sessionFilePath = join(sessionsDirRealPath, file)
+
+    try {
+      const sessionFileStats = await lstat(sessionFilePath)
+      if (sessionFileStats.isSymbolicLink()) {
+        continue
+      }
+
+      const sessionFileRealPath = await realpath(sessionFilePath)
+      if (!isPathInside(sessionsDirRealPath, sessionFileRealPath)) {
+        continue
+      }
+
+      const content = await readFile(sessionFileRealPath, 'utf8')
+      sections.push(`## Previous Session: ${file.replace('.md', '')}\n\n${content.trim()}`)
+    } catch (error) {
+      if (isMissingFileError(error)) {
+        continue
+      }
+
+      throw error
+    }
+  }
+
+  return sections.reverse().join('\n\n')
 }
 
 function isMissingFileError(error: unknown): boolean {
