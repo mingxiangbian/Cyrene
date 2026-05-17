@@ -113,6 +113,85 @@ export async function loadMemories(cwd: string): Promise<string> {
   return sections.join('\n\n')
 }
 
+export async function loadDaily(cwd: string, lines: number): Promise<string> {
+  if (lines <= 0) {
+    return ''
+  }
+
+  const content = await readRegularTextFileIfExists(join(cwd, '.cc-local', 'memory', 'daily.md'))
+  const dailyLines = content
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .slice(-lines)
+
+  return dailyLines.length === 0 ? '' : `## Recent Daily Memory\n\n${dailyLines.join('\n')}`
+}
+
+export async function loadProjectMemories(cwd: string): Promise<string> {
+  return loadMemoryScope(join(cwd, '.cc-local', 'memory'), 'Project Memory')
+}
+
+export async function loadGlobalMemories(userCcLocalDir: string): Promise<string> {
+  return loadMemoryScope(join(userCcLocalDir, 'memory'), 'Global Memory')
+}
+
+export async function loadMemoryScope(memoryDir: string, heading: string): Promise<string> {
+  let memoryDirRealPath: string
+  let index: string
+
+  try {
+    const memoryDirStats = await lstat(memoryDir)
+    if (memoryDirStats.isSymbolicLink() || !memoryDirStats.isDirectory()) {
+      return ''
+    }
+
+    memoryDirRealPath = await realpath(memoryDir)
+    index = await readFile(join(memoryDirRealPath, 'MEMORY.md'), 'utf8')
+  } catch (error) {
+    if (isMissingFileError(error)) {
+      return ''
+    }
+
+    throw error
+  }
+
+  const sections: string[] = []
+  for (const line of index.split('\n')) {
+    const match = line.match(/^- \[([^\]]+)\]\(([^)]+)\) — .+$/)
+    if (!match) {
+      continue
+    }
+
+    const [, title, filename] = match
+    const memoryFilePath = resolve(memoryDir, filename)
+    if (!isPathInside(memoryDir, memoryFilePath)) {
+      continue
+    }
+
+    try {
+      const memoryFileRealPath = await realpath(memoryFilePath)
+      if (!isPathInside(memoryDirRealPath, memoryFileRealPath)) {
+        continue
+      }
+
+      const content = await readFile(memoryFileRealPath, 'utf8')
+      const trimmed = content.trim()
+      if (trimmed !== '') {
+        sections.push(`## ${heading}: ${title}\n\n${trimmed}`)
+      }
+    } catch (error) {
+      if (isMissingFileError(error)) {
+        continue
+      }
+
+      throw error
+    }
+  }
+
+  return sections.join('\n\n')
+}
+
 async function readRegularTextFileIfExists(filePath: string): Promise<string> {
   try {
     const stats = await lstat(filePath)

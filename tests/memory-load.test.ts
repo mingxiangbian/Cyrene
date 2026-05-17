@@ -3,7 +3,11 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
 import {
+  loadDaily,
+  loadGlobalMemories,
   loadMemories,
+  loadMemoryScope,
+  loadProjectMemories,
   loadRecentSummaries,
   loadRuleStack,
   loadSoul,
@@ -224,6 +228,74 @@ describe('loadMemories', () => {
     await writeFile(join(memoryDir, 'inside.md'), 'Load this memory.\n')
 
     await expect(loadMemories(root)).resolves.toBe('## Memory: Inside\n\nLoad this memory.')
+  })
+})
+
+describe('loadDaily', () => {
+  afterEach(async () => {
+    await Promise.all(tempDirs.splice(0).map((dir) => rm(dir, { recursive: true, force: true })))
+  })
+
+  it('loads the most recent daily lines', async () => {
+    const root = await createTempDir()
+    const memoryDir = await createMemoryDir(root)
+    await writeFile(join(memoryDir, 'daily.md'), 'one\n\ntwo\nthree\n')
+
+    await expect(loadDaily(root, 2)).resolves.toBe('## Recent Daily Memory\n\ntwo\nthree')
+  })
+
+  it('returns an empty string when daily is missing, empty, zero lines, or symlinked', async () => {
+    const root = await createTempDir()
+    await expect(loadDaily(root, 2)).resolves.toBe('')
+
+    const memoryDir = await createMemoryDir(root)
+    await writeFile(join(memoryDir, 'daily.md'), '\n')
+    await expect(loadDaily(root, 2)).resolves.toBe('')
+    await expect(loadDaily(root, 0)).resolves.toBe('')
+
+    await rm(join(memoryDir, 'daily.md'))
+    const outside = await createTempDir()
+    await writeFile(join(outside, 'daily.md'), 'outside\n')
+    await symlink(join(outside, 'daily.md'), join(memoryDir, 'daily.md'))
+    await expect(loadDaily(root, 2)).resolves.toBe('')
+  })
+})
+
+describe('scoped memory loading', () => {
+  afterEach(async () => {
+    await Promise.all(tempDirs.splice(0).map((dir) => rm(dir, { recursive: true, force: true })))
+  })
+
+  it('loads memory entries with an explicit scope heading', async () => {
+    const root = await createTempDir()
+    const memoryDir = await createMemoryDir(root)
+    await writeFile(join(memoryDir, 'MEMORY.md'), '- [Style](style.md) — coding style\n')
+    await writeFile(join(memoryDir, 'style.md'), 'Keep edits small.\n')
+
+    await expect(loadMemoryScope(memoryDir, 'Project Memory')).resolves.toBe(
+      '## Project Memory: Style\n\nKeep edits small.'
+    )
+  })
+
+  it('loads project and global memories through separate APIs', async () => {
+    const root = await createTempDir()
+    const projectMemoryDir = await createMemoryDir(root)
+    const userCcLocalDir = join(await createTempDir(), '.cc-local')
+    const globalMemoryDir = join(userCcLocalDir, 'memory')
+    await mkdir(globalMemoryDir, { recursive: true })
+    await writeFile(join(projectMemoryDir, 'MEMORY.md'), '- [Project](project.md) — project memory\n')
+    await writeFile(join(projectMemoryDir, 'project.md'), 'Project content.\n')
+    await writeFile(join(globalMemoryDir, 'MEMORY.md'), '- [Global](global.md) — global memory\n')
+    await writeFile(join(globalMemoryDir, 'global.md'), 'Global content.\n')
+
+    await expect(loadProjectMemories(root)).resolves.toBe('## Project Memory: Project\n\nProject content.')
+    await expect(loadGlobalMemories(userCcLocalDir)).resolves.toBe('## Global Memory: Global\n\nGlobal content.')
+  })
+
+  it('returns empty string for missing global memory scope', async () => {
+    const userCcLocalDir = join(await createTempDir(), '.cc-local')
+
+    await expect(loadGlobalMemories(userCcLocalDir)).resolves.toBe('')
   })
 })
 
