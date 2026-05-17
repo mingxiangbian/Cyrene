@@ -52,6 +52,32 @@ export function snipMessages(messages: ChatMessage[], keepRecentRounds: number):
   return [...snippedOldMessages, ...recentMessages.map(copyMessage)]
 }
 
+export function microcompactToolResults(
+  messages: ChatMessage[],
+  keepRecentRounds: number
+): ChatMessage[] {
+  const recentStart = recentRoundStart(messages, keepRecentRounds)
+  const toolNamesById = new Map<string, string>()
+
+  return messages.map((message, index) => {
+    if (message.tool_calls) {
+      for (const toolCall of message.tool_calls) {
+        toolNamesById.set(toolCall.id, toolCall.function.name)
+      }
+    }
+
+    if (index >= recentStart || message.role !== 'tool') {
+      return copyMessage(message)
+    }
+
+    const toolName = toolNamesById.get(message.tool_call_id ?? '') ?? 'unknown'
+    return {
+      ...copyMessage(message),
+      content: `[tool: ${toolName} - output truncated (${message.content.length} chars)]`
+    }
+  })
+}
+
 export async function compactHistory(
   messages: ChatMessage[],
   opts: CompactHistoryOptions
