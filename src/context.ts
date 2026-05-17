@@ -29,6 +29,29 @@ export function compactToolResult(content: string, maxLines: number): string {
   ].join('\n')
 }
 
+export function snipMessages(messages: ChatMessage[], keepRecentRounds: number): ChatMessage[] {
+  const recentStart = recentRoundStart(messages, keepRecentRounds)
+  const oldMessages = messages.slice(0, recentStart)
+  const recentMessages = messages.slice(recentStart)
+  const snippedOldMessages: ChatMessage[] = []
+
+  for (const message of oldMessages) {
+    if (message.role === 'system' || message.role === 'user') {
+      snippedOldMessages.push(copyMessage(message))
+      continue
+    }
+
+    if (message.role === 'assistant' && hasTextContent(message)) {
+      snippedOldMessages.push({
+        role: 'assistant',
+        content: message.content
+      })
+    }
+  }
+
+  return [...snippedOldMessages, ...recentMessages.map(copyMessage)]
+}
+
 export async function compactHistory(
   messages: ChatMessage[],
   opts: CompactHistoryOptions
@@ -61,6 +84,10 @@ export async function compactHistory(
 }
 
 function recentRoundStart(messages: ChatMessage[], keepRecentRounds: number): number {
+  if (keepRecentRounds <= 0) {
+    return messages.length
+  }
+
   let roundsSeen = 0
   for (let index = messages.length - 1; index >= 0; index--) {
     if (messages[index].role !== 'user') {
@@ -74,6 +101,24 @@ function recentRoundStart(messages: ChatMessage[], keepRecentRounds: number): nu
   }
 
   return 0
+}
+
+function hasTextContent(message: ChatMessage): boolean {
+  return message.content.trim().length > 0
+}
+
+function copyMessage(message: ChatMessage): ChatMessage {
+  return {
+    ...message,
+    ...(message.tool_calls
+      ? {
+          tool_calls: message.tool_calls.map((toolCall) => ({
+            ...toolCall,
+            function: { ...toolCall.function }
+          }))
+        }
+      : {})
+  }
 }
 
 function formatMessagesForSummary(messages: ChatMessage[]): string {
