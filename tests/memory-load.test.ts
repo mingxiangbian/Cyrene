@@ -1,8 +1,15 @@
-import { mkdir, mkdtemp, readdir, readFile, rm, symlink, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, readdir, readFile, realpath, rm, symlink, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
-import { loadMemories, loadRecentSummaries, saveSessionSummary, updateMemoryIndex } from '../src/memory.js'
+import {
+  loadMemories,
+  loadRecentSummaries,
+  loadRuleStack,
+  loadSoul,
+  saveSessionSummary,
+  updateMemoryIndex
+} from '../src/memory.js'
 
 const tempDirs: string[] = []
 
@@ -23,6 +30,105 @@ async function createSessionsDir(root: string): Promise<string> {
   await mkdir(dir, { recursive: true })
   return dir
 }
+
+describe('loadSoul', () => {
+  afterEach(async () => {
+    await Promise.all(tempDirs.splice(0).map((dir) => rm(dir, { recursive: true, force: true })))
+  })
+
+  it('loads only the global soul file', async () => {
+    const home = await createTempDir()
+    const userCcLocalDir = join(home, '.cc-local')
+    const project = join(home, 'workspace', 'project')
+    await mkdir(join(project, '.cc-local'), { recursive: true })
+    await mkdir(userCcLocalDir, { recursive: true })
+    await writeFile(join(userCcLocalDir, 'soul.md'), 'Be concise.\n')
+    await writeFile(join(project, '.cc-local', 'soul.md'), 'Do not load project persona.\n')
+
+    await expect(loadSoul(userCcLocalDir)).resolves.toBe('## Global Persona\n\nBe concise.')
+  })
+
+  it('returns an empty string when global soul is missing or empty', async () => {
+    const home = await createTempDir()
+    const userCcLocalDir = join(home, '.cc-local')
+    await mkdir(userCcLocalDir, { recursive: true })
+    await expect(loadSoul(userCcLocalDir)).resolves.toBe('')
+
+    await writeFile(join(userCcLocalDir, 'soul.md'), '\n\n')
+    await expect(loadSoul(userCcLocalDir)).resolves.toBe('')
+  })
+})
+
+describe('loadRuleStack', () => {
+  afterEach(async () => {
+    await Promise.all(tempDirs.splice(0).map((dir) => rm(dir, { recursive: true, force: true })))
+  })
+
+  it('loads global and project Rule.md files from broadest to narrowest', async () => {
+    const home = await createTempDir()
+    const userCcLocalDir = join(home, '.cc-local')
+    const workspace = join(home, 'workspace')
+    const project = join(workspace, 'project')
+    await mkdir(userCcLocalDir, { recursive: true })
+    await mkdir(join(workspace, '.cc-local'), { recursive: true })
+    await mkdir(join(project, '.cc-local'), { recursive: true })
+    await writeFile(join(userCcLocalDir, 'Rule.md'), 'Global rule.\n')
+    await writeFile(join(workspace, '.cc-local', 'Rule.md'), 'Workspace rule.\n')
+    await writeFile(join(project, '.cc-local', 'Rule.md'), 'Project rule.\n')
+    const workspaceRealPath = await realpath(workspace)
+    const projectRealPath = await realpath(project)
+
+    await expect(loadRuleStack(project, userCcLocalDir)).resolves.toBe(
+      [
+        '## Global Rule\n\nGlobal rule.',
+        `## Rule: ${workspaceRealPath}\n\nWorkspace rule.`,
+        `## Rule: ${projectRealPath}\n\nProject rule.`
+      ].join('\n\n')
+    )
+  })
+
+  it('skips missing intermediate Rule.md files without stopping traversal', async () => {
+    const home = await createTempDir()
+    const userCcLocalDir = join(home, '.cc-local')
+    const workspace = join(home, 'workspace')
+    const project = join(workspace, 'project')
+    await mkdir(userCcLocalDir, { recursive: true })
+    await mkdir(join(project, '.cc-local'), { recursive: true })
+    await writeFile(join(userCcLocalDir, 'Rule.md'), 'Global rule.\n')
+    await writeFile(join(project, '.cc-local', 'Rule.md'), 'Project rule.\n')
+    const projectRealPath = await realpath(project)
+
+    await expect(loadRuleStack(project, userCcLocalDir)).resolves.toBe(
+      ['## Global Rule\n\nGlobal rule.', `## Rule: ${projectRealPath}\n\nProject rule.`].join('\n\n')
+    )
+  })
+
+  it('does not traverse project rules when cwd is outside the global home root', async () => {
+    const home = await createTempDir()
+    const outside = await createTempDir()
+    const userCcLocalDir = join(home, '.cc-local')
+    await mkdir(userCcLocalDir, { recursive: true })
+    await mkdir(join(outside, '.cc-local'), { recursive: true })
+    await writeFile(join(userCcLocalDir, 'Rule.md'), 'Global rule.\n')
+    await writeFile(join(outside, '.cc-local', 'Rule.md'), 'Outside rule.\n')
+
+    await expect(loadRuleStack(outside, userCcLocalDir)).resolves.toBe('## Global Rule\n\nGlobal rule.')
+  })
+
+  it('ignores empty and symlinked Rule.md files', async () => {
+    const home = await createTempDir()
+    const outside = await createTempDir()
+    const userCcLocalDir = join(home, '.cc-local')
+    const project = join(home, 'project')
+    await mkdir(userCcLocalDir, { recursive: true })
+    await mkdir(join(project, '.cc-local'), { recursive: true })
+    await writeFile(join(userCcLocalDir, 'Rule.md'), '\n')
+    await writeFile(join(outside, 'Rule.md'), 'Do not load symlink.\n')
+    await symlink(join(outside, 'Rule.md'), join(project, '.cc-local', 'Rule.md'))
+
+    await expect(loadRuleStack(project, userCcLocalDir)).resolves.toBe('')
+  })
+})
 
 describe('loadMemories', () => {
   afterEach(async () => {

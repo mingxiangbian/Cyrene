@@ -1,6 +1,6 @@
 import { constants } from 'node:fs'
 import { lstat, mkdir, open, readdir, readFile, realpath, writeFile } from 'node:fs/promises'
-import { isAbsolute, join, relative, resolve } from 'node:path'
+import { dirname, isAbsolute, join, relative, resolve } from 'node:path'
 
 export async function loadInstructionsIfExists(cwd: string): Promise<string> {
   try {
@@ -13,6 +13,48 @@ export async function loadInstructionsIfExists(cwd: string): Promise<string> {
 
     throw error
   }
+}
+
+export async function loadSoul(userCcLocalDir: string): Promise<string> {
+  const content = await readRegularTextFileIfExists(join(userCcLocalDir, 'soul.md'))
+  return content === '' ? '' : `## Global Persona\n\n${content}`
+}
+
+export async function loadRuleStack(cwd: string, userCcLocalDir: string): Promise<string> {
+  const sections: string[] = []
+  const globalRule = await readRegularTextFileIfExists(join(userCcLocalDir, 'Rule.md'))
+  if (globalRule !== '') {
+    sections.push(`## Global Rule\n\n${globalRule}`)
+  }
+
+  let cwdRealPath: string
+  let homeRealPath: string
+  try {
+    cwdRealPath = await realpath(cwd)
+    homeRealPath = await realpath(dirname(userCcLocalDir))
+  } catch (error) {
+    if (isMissingFileError(error)) {
+      return sections.join('\n\n')
+    }
+
+    throw error
+  }
+
+  if (!isPathInside(homeRealPath, cwdRealPath) || cwdRealPath === homeRealPath) {
+    return sections.join('\n\n')
+  }
+
+  const relativeParts = relative(homeRealPath, cwdRealPath).split('/').filter(Boolean)
+  let currentDir = homeRealPath
+  for (const part of relativeParts) {
+    currentDir = join(currentDir, part)
+    const rule = await readRegularTextFileIfExists(join(currentDir, '.cc-local', 'Rule.md'))
+    if (rule !== '') {
+      sections.push(`## Rule: ${currentDir}\n\n${rule}`)
+    }
+  }
+
+  return sections.join('\n\n')
 }
 
 export async function loadMemories(cwd: string): Promise<string> {
@@ -69,6 +111,23 @@ export async function loadMemories(cwd: string): Promise<string> {
   }
 
   return sections.join('\n\n')
+}
+
+async function readRegularTextFileIfExists(filePath: string): Promise<string> {
+  try {
+    const stats = await lstat(filePath)
+    if (stats.isSymbolicLink() || !stats.isFile()) {
+      return ''
+    }
+
+    return (await readFile(filePath, 'utf8')).trim()
+  } catch (error) {
+    if (isMissingFileError(error)) {
+      return ''
+    }
+
+    throw error
+  }
 }
 
 export async function loadRecentSummaries(cwd: string, count: number): Promise<string> {
