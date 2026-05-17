@@ -5,7 +5,14 @@ import chalk from 'chalk'
 import { Command } from 'commander'
 import { runAgentLoop } from './agent-loop.js'
 import { createDefaultConfig } from './config.js'
-import { loadInstructionsIfExists, loadMemories, loadRecentSummaries } from './memory.js'
+import {
+  loadDaily,
+  loadGlobalMemories,
+  loadInstructionsIfExists,
+  loadProjectMemories,
+  loadRuleStack,
+  loadSoul
+} from './memory.js'
 import { runRepl } from './repl.js'
 import { createCoreTools } from './tools/index.js'
 
@@ -33,10 +40,22 @@ async function main(): Promise<void> {
   const config = createDefaultConfig(resolve(options.cwd))
   const baseSystemPrompt = await readFile(systemPromptPath, 'utf8')
   const currentDate = new Date().toISOString().slice(0, 10)
+  const persona = await loadSoul(config.userCcLocalDir)
+  const rules = await loadRuleStack(config.cwd, config.userCcLocalDir)
   const projectInstructions = await loadInstructionsIfExists(config.cwd)
-  const memories = await loadMemories(config.cwd)
-  const recentSummaries = await loadRecentSummaries(config.cwd, 3)
-  const systemPrompt = [baseSystemPrompt.trimEnd(), `# currentDate\nToday's date is ${currentDate}.`, projectInstructions, memories, recentSummaries]
+  const projectMemories = await loadProjectMemories(config.cwd)
+  const globalMemories = await loadGlobalMemories(config.userCcLocalDir)
+  const daily = await loadDaily(config.cwd, config.dailyLoadLines)
+  const systemPrompt = [
+    baseSystemPrompt.trimEnd(),
+    `# currentDate\nToday's date is ${currentDate}.`,
+    persona,
+    rules,
+    projectInstructions,
+    projectMemories,
+    globalMemories,
+    daily
+  ]
     .filter(Boolean)
     .join('\n\n')
   const tools = createCoreTools()

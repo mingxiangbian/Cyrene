@@ -9,13 +9,24 @@ import { describe, expect, it } from 'vitest'
 const execFileAsync = promisify(execFile)
 
 describe('main CLI', () => {
-  it('appends cwd project instructions, memories, and recent summaries to the system prompt', async () => {
-    const root = await mkdtemp(join(tmpdir(), 'cc-local-main-'))
-    await mkdir(join(root, '.cc-local'))
+  it('appends soul, Rule.md stack, project/global memories, and daily memory to the system prompt', async () => {
+    const home = await mkdtemp(join(tmpdir(), 'cc-local-main-home-'))
+    const root = join(home, 'workspace', 'project')
+    const userCcLocalDir = join(home, '.cc-local')
+    await mkdir(join(root, '.cc-local'), { recursive: true })
+    await mkdir(join(home, 'workspace', '.cc-local'), { recursive: true })
+    await mkdir(join(userCcLocalDir, 'memory'), { recursive: true })
+    await writeFile(join(userCcLocalDir, 'soul.md'), 'Be direct.\n')
+    await writeFile(join(userCcLocalDir, 'Rule.md'), 'Global rule.\n')
+    await writeFile(join(home, 'workspace', '.cc-local', 'Rule.md'), 'Workspace rule.\n')
+    await writeFile(join(root, '.cc-local', 'Rule.md'), 'Project rule.\n')
     await writeFile(join(root, '.cc-local', 'instructions.md'), 'Use TDD.\n')
     await mkdir(join(root, '.cc-local', 'memory', 'sessions'), { recursive: true })
     await writeFile(join(root, '.cc-local', 'memory', 'MEMORY.md'), '- [Code Style](style.md) — local style\n')
     await writeFile(join(root, '.cc-local', 'memory', 'style.md'), 'Prefer small patches.\n')
+    await writeFile(join(userCcLocalDir, 'memory', 'MEMORY.md'), '- [Global Memory](global.md) — global fact\n')
+    await writeFile(join(userCcLocalDir, 'memory', 'global.md'), 'Remember global fact.\n')
+    await writeFile(join(root, '.cc-local', 'memory', 'daily.md'), 'recent one\nrecent two\n')
     await writeFile(join(root, '.cc-local', 'memory', 'sessions', '2026-05-12.md'), 'Previous session summary.\n')
 
     let requestBody: unknown
@@ -45,23 +56,35 @@ describe('main CLI', () => {
         {
           env: {
             ...process.env,
+            HOME: home,
             CC_LOCAL_BASE_URL: `http://127.0.0.1:${address.port}/v1`
           }
         }
       )
 
       expect(result.stdout.trim()).toBe('ok')
-      expect(requestBody).toMatchObject({
-        messages: [
-          {
-            role: 'system',
-            content: expect.stringMatching(
-              /\n\n## Project Instructions\n\nUse TDD\.\n\n\n## Memory: Code Style\n\nPrefer small patches\.\n\n## Previous Session: 2026-05-12\n\nPrevious session summary\.$/
-            )
-          },
-          { role: 'user', content: 'hello' }
-        ]
-      })
+      const messages = (requestBody as { messages: Array<{ role: string; content: string }> }).messages
+      expect(messages[1]).toEqual({ role: 'user', content: 'hello' })
+      const systemPrompt = messages[0]?.content ?? ''
+      const expectedOrder = [
+        '## Global Persona\n\nBe direct.',
+        '## Global Rule\n\nGlobal rule.',
+        '## Rule:',
+        'Workspace rule.',
+        'Project rule.',
+        '## Project Instructions\n\nUse TDD.',
+        '## Project Memory: Code Style\n\nPrefer small patches.',
+        '## Global Memory: Global Memory\n\nRemember global fact.',
+        '## Recent Daily Memory\n\nrecent one\nrecent two'
+      ]
+      let lastIndex = -1
+      for (const expected of expectedOrder) {
+        const index = systemPrompt.indexOf(expected)
+        expect(index).toBeGreaterThan(lastIndex)
+        lastIndex = index
+      }
+      expect(systemPrompt).not.toContain('Previous Session')
+      expect(systemPrompt).not.toContain('Previous session summary')
     } finally {
       await new Promise<void>((resolve, reject) => {
         server.close((error) => {
@@ -72,7 +95,7 @@ describe('main CLI', () => {
           resolve()
         })
       })
-      await rm(root, { recursive: true, force: true })
+      await rm(home, { recursive: true, force: true })
     }
   })
 
