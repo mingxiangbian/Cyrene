@@ -2,6 +2,7 @@ import { stdin as input, stdout as output } from 'node:process'
 import { createInterface } from 'node:readline/promises'
 import chalk from 'chalk'
 import { runAgentLoop } from './agent-loop.js'
+import { collapseConsecutiveCalls, microcompactToolResults, snipMessages } from './context.js'
 import type { AppConfig } from './config.js'
 import { callModel as defaultCallModel, type CallModelInput, type ChatMessage, type ModelResponse } from './llm-client.js'
 import { saveSessionSummary as defaultSaveSessionSummary } from './memory.js'
@@ -98,11 +99,17 @@ export async function runRepl(inputConfig: {
   }
 }
 
-export function buildSessionSummaryPrompt(messages: ChatMessage[]): string | null {
-  const conversation = messages.filter((message) => message.role !== 'system')
+export function buildSessionSummaryPrompt(messages: ChatMessage[], config: AppConfig): string | null {
+  let conversation = messages
+    .filter((message) => message.role !== 'system')
+    .map(copyMessage)
   if (conversation.length === 0) {
     return null
   }
+
+  conversation = snipMessages(conversation, config.snipKeepRounds)
+  conversation = microcompactToolResults(conversation, config.microcompactKeepRecentRounds)
+  conversation = collapseConsecutiveCalls(conversation)
 
   return `Summarize this REPL session using these sections:
 
@@ -124,7 +131,7 @@ async function saveReplSessionSummary(
   callModel: (input: CallModelInput) => Promise<ModelResponse>,
   saveSessionSummary: (cwd: string, content: string) => Promise<void>
 ): Promise<void> {
-  const summaryPrompt = buildSessionSummaryPrompt(messages)
+  const summaryPrompt = buildSessionSummaryPrompt(messages, config)
   if (summaryPrompt === null) {
     return
   }
@@ -159,6 +166,20 @@ function buildSessionSummaryConfig(config: AppConfig): AppConfig {
     ...config,
     llmRequestTimeoutMs: Math.min(config.llmRequestTimeoutMs, REPL_SUMMARY_TIMEOUT_MS),
     llmRetryMaxAttempts: 1
+  }
+}
+
+function copyMessage(message: ChatMessage): ChatMessage {
+  return {
+    ...message,
+    ...(message.tool_calls
+      ? {
+          tool_calls: message.tool_calls.map((toolCall) => ({
+            ...toolCall,
+            function: { ...toolCall.function }
+          }))
+        }
+      : {})
   }
 }
 

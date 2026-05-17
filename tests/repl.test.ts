@@ -323,12 +323,15 @@ describe('runRepl', () => {
 
 describe('buildSessionSummaryPrompt', () => {
   it('builds a summary prompt from non-system messages', () => {
-    const prompt = buildSessionSummaryPrompt([
-      { role: 'system', content: 'system rules' },
-      { role: 'user', content: 'implement task 7' },
-      { role: 'assistant', content: 'updated repl' },
-      { role: 'tool', tool_call_id: 'call-1', content: 'tests passed' }
-    ])
+    const prompt = buildSessionSummaryPrompt(
+      [
+        { role: 'system', content: 'system rules' },
+        { role: 'user', content: 'implement task 7' },
+        { role: 'assistant', content: 'updated repl' },
+        { role: 'tool', tool_call_id: 'call-1', content: 'tests passed' }
+      ],
+      createDefaultConfig('/tmp/project')
+    )
 
     expect(prompt).toBe(`Summarize this REPL session using these sections:
 
@@ -347,6 +350,56 @@ tool: tests passed`)
   })
 
   it('returns null when only system messages exist', () => {
-    expect(buildSessionSummaryPrompt([{ role: 'system', content: 'system rules' }])).toBeNull()
+    expect(buildSessionSummaryPrompt([{ role: 'system', content: 'system rules' }], createDefaultConfig('/tmp/project'))).toBeNull()
+  })
+
+  it('compresses a copy of non-system messages without mutating the session history', () => {
+    const config = createDefaultConfig('/tmp/project')
+    config.snipKeepRounds = 1
+    const oldAssistant: ChatMessage = {
+      role: 'assistant',
+      content: '',
+      tool_calls: [{ id: 'call-old', type: 'function', function: { name: 'bash', arguments: '{}' } }]
+    }
+    const oldTool: ChatMessage = { role: 'tool', tool_call_id: 'call-old', content: 'old output' }
+    const messages: ChatMessage[] = [
+      { role: 'system', content: 'system rules' },
+      { role: 'user', content: 'old request' },
+      oldAssistant,
+      oldTool,
+      { role: 'user', content: 'recent request' },
+      { role: 'assistant', content: 'recent answer' }
+    ]
+
+    const prompt = buildSessionSummaryPrompt(messages, config)
+
+    expect(prompt).not.toContain('old output')
+    expect(prompt).toContain('user: old request')
+    expect(prompt).toContain('user: recent request')
+    expect(oldAssistant).toEqual({
+      role: 'assistant',
+      content: '',
+      tool_calls: [{ id: 'call-old', type: 'function', function: { name: 'bash', arguments: '{}' } }]
+    })
+    expect(oldTool).toEqual({ role: 'tool', tool_call_id: 'call-old', content: 'old output' })
+  })
+
+  it('microcompacts and collapses summary prompt transcript copies', () => {
+    const config = createDefaultConfig('/tmp/project')
+    config.snipKeepRounds = 15
+    config.microcompactKeepRecentRounds = 0
+    const prompt = buildSessionSummaryPrompt(
+      [
+        { role: 'assistant', content: '', tool_calls: [{ id: 'call-1', type: 'function', function: { name: 'bash', arguments: '{}' } }] },
+        { role: 'tool', tool_call_id: 'call-1', content: 'first command output' },
+        { role: 'assistant', content: '', tool_calls: [{ id: 'call-2', type: 'function', function: { name: 'bash', arguments: '{}' } }] },
+        { role: 'tool', tool_call_id: 'call-2', content: 'second command output' }
+      ],
+      config
+    )
+
+    expect(prompt).toContain('[collapsed 2 consecutive bash tool calls]')
+    expect(prompt).toContain('[tool: bash - output truncated (20 chars)]')
+    expect(prompt).toContain('[tool: bash - output truncated (21 chars)]')
   })
 })
