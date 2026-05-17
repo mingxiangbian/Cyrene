@@ -7,7 +7,7 @@ import { callModel as defaultCallModel, type CallModelInput, type ChatMessage, t
 import { saveSessionSummary as defaultSaveSessionSummary } from './memory.js'
 import type { Tool, ToolContext } from './tools/types.js'
 
-const REPL_SUMMARY_TIMEOUT_MS = 5_000
+const REPL_SUMMARY_TIMEOUT_MS = 60_000
 
 export interface RunReplTurnInput {
   config: AppConfig
@@ -138,9 +138,19 @@ async function saveReplSessionSummary(
     const summary = response.content.trim()
     if (summary !== '') {
       await saveSessionSummary(config.cwd, summary)
+      return
     }
   } catch {
-    // Summary generation should not prevent REPL exit.
+    // Fall back to a deterministic local summary below.
+  }
+
+  const fallbackSummary = buildFallbackSessionSummary(messages)
+  if (fallbackSummary !== '') {
+    try {
+      await saveSessionSummary(config.cwd, fallbackSummary)
+    } catch {
+      // Session summary persistence should not prevent REPL exit.
+    }
   }
 }
 
@@ -152,6 +162,41 @@ function buildSessionSummaryConfig(config: AppConfig): AppConfig {
   }
 }
 
+function buildFallbackSessionSummary(messages: ChatMessage[]): string {
+  const conversation = messages.filter((message) => message.role !== 'system')
+  if (conversation.length === 0) {
+    return ''
+  }
+
+  const lastUserMessage = [...conversation]
+    .reverse()
+    .find((message) => message.role === 'user' && !isInternalRetryPrompt(message.content))
+  const fileMentions = Array.from(
+    new Set(conversation.flatMap((message) => message.content.match(/[^\s:]+\/[^\s]+/g) ?? []))
+  )
+
+  return [
+    '## Intent',
+    lastUserMessage ? `Continue from user request: ${lastUserMessage.content}` : 'Continue the REPL session.',
+    '',
+    '## Decisions Made',
+    '- No model-generated decisions were available.',
+    '',
+    '## Files Modified',
+    fileMentions.length > 0 ? fileMentions.map((file) => `- ${file}`).join('\n') : '- None detected.',
+    '',
+    '## Test Results',
+    '- No test results detected.',
+    '',
+    '## Pending',
+    '- Review the previous conversation if more detail is needed.'
+  ].join('\n')
+}
+
 function isExitInput(input: string): boolean {
   return input === 'exit' || input === 'quit' || input === 'q'
+}
+
+function isInternalRetryPrompt(content: string): boolean {
+  return content.startsWith('Your previous response was empty.')
 }

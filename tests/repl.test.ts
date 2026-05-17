@@ -225,7 +225,7 @@ describe('runRepl', () => {
     expect(callModel).toHaveBeenCalledTimes(2)
     expect(callModel.mock.calls[1]?.[0]).toMatchObject({
       config: {
-        llmRequestTimeoutMs: 5000,
+        llmRequestTimeoutMs: 60000,
         llmRetryMaxAttempts: 1
       },
       tools: []
@@ -261,7 +261,7 @@ describe('runRepl', () => {
     expect(saveSummary).not.toHaveBeenCalled()
   })
 
-  it('skips saving a blank summary after graceful exit', async () => {
+  it('saves a fallback summary when the model returns a blank summary after graceful exit', async () => {
     const readline = createTestReadline(['hello', 'exit'])
     const saveSummary = vi.fn(async (_cwd: string, _content: string) => {})
     let modelCallCount = 0
@@ -285,7 +285,39 @@ describe('runRepl', () => {
     }
 
     expect(callModel).toHaveBeenCalledTimes(2)
-    expect(saveSummary).not.toHaveBeenCalled()
+    expect(saveSummary).toHaveBeenCalledWith(
+      '/tmp/project',
+      expect.stringContaining('## Intent\nContinue from user request: hello')
+    )
+  })
+
+  it('ignores internal retry prompts in fallback summaries', async () => {
+    const readline = createTestReadline(['hello', 'exit'])
+    const saveSummary = vi.fn(async (_cwd: string, _content: string) => {})
+    let modelCallCount = 0
+    const callModel = vi.fn(async (_input: CallModelInput): Promise<ModelResponse> => {
+      modelCallCount += 1
+      return { content: modelCallCount === 1 ? '' : '   ', toolCalls: [] }
+    })
+    const consoleLog = vi.spyOn(console, 'log').mockImplementation(() => {})
+
+    try {
+      await runRepl({
+        config: createDefaultConfig('/tmp/project'),
+        systemPrompt: 'system rules',
+        tools: [],
+        callModel,
+        readline,
+        saveSessionSummary: saveSummary
+      })
+    } finally {
+      consoleLog.mockRestore()
+    }
+
+    expect(saveSummary).toHaveBeenCalledWith(
+      '/tmp/project',
+      expect.stringContaining('## Intent\nContinue from user request: hello')
+    )
   })
 })
 

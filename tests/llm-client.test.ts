@@ -84,6 +84,27 @@ describe('callModel', () => {
     expect(result).toEqual({ content: '', toolCalls })
   })
 
+  it('omits tool fields when no tools are provided', async () => {
+    const fetch = vi.fn().mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          choices: [{ message: { content: 'plain response' } }]
+        }),
+        { status: 200 }
+      )
+    )
+    vi.stubGlobal('fetch', fetch)
+    const config = createDefaultConfig('/tmp/project')
+    config.model.model = 'local-model'
+    const messages = [{ role: 'user' as const, content: 'Say hello' }]
+
+    await callModel({ config, messages, tools: [] })
+
+    const body = JSON.parse((fetch.mock.calls[0]?.[1] as RequestInit).body as string) as Record<string, unknown>
+    expect(body).not.toHaveProperty('tools')
+    expect(body).not.toHaveProperty('tool_choice')
+  })
+
   it('throws a helpful error when the endpoint returns a non-OK response', async () => {
     vi.stubGlobal(
       'fetch',
