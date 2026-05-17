@@ -12,7 +12,8 @@ import {
   loadRuleStack,
   loadSoul,
   saveSessionSummary,
-  updateMemoryIndex
+  updateMemoryIndex,
+  writeMemoryEntry
 } from '../src/memory.js'
 
 const tempDirs: string[] = []
@@ -669,5 +670,108 @@ describe('updateMemoryIndex', () => {
 
     await expect(readFile(outsideMemoryIndex, 'utf8')).resolves.toBe('- [Existing](existing.md) — old notes\n')
     expect(error).toBeInstanceOf(Error)
+  })
+})
+
+describe('writeMemoryEntry', () => {
+  afterEach(async () => {
+    await Promise.all(tempDirs.splice(0).map((dir) => rm(dir, { recursive: true, force: true })))
+  })
+
+  it('creates a memory file and appends the index entry', async () => {
+    const root = await createTempDir()
+
+    await expect(
+      writeMemoryEntry(
+        root,
+        {
+          title: 'Architecture',
+          file: 'architecture.md',
+          summary: 'agent loop notes',
+          content: 'Use small context windows.\n'
+        },
+        { memoryMaxLines: 10, memoryMaxLineLength: 80 }
+      )
+    ).resolves.toEqual({ ok: true, file: 'architecture.md' })
+
+    await expect(readFile(join(root, '.cc-local', 'memory', 'architecture.md'), 'utf8')).resolves.toBe(
+      'Use small context windows.\n'
+    )
+    await expect(readFile(join(root, '.cc-local', 'memory', 'MEMORY.md'), 'utf8')).resolves.toBe(
+      '- [Architecture](architecture.md) — agent loop notes\n'
+    )
+  })
+
+  it('rejects writes when MEMORY.md is full', async () => {
+    const root = await createTempDir()
+    const memoryDir = await createMemoryDir(root)
+    await writeFile(join(memoryDir, 'MEMORY.md'), '- [One](one.md) — one\n- [Two](two.md) — two\n')
+
+    await expect(
+      writeMemoryEntry(
+        root,
+        { title: 'Three', file: 'three.md', summary: 'three', content: 'Three.\n' },
+        { memoryMaxLines: 2, memoryMaxLineLength: 80 }
+      )
+    ).resolves.toEqual({ ok: false, error: 'MEMORY.md is full' })
+
+    await expect(readFile(join(memoryDir, 'MEMORY.md'), 'utf8')).resolves.toBe(
+      '- [One](one.md) — one\n- [Two](two.md) — two\n'
+    )
+    await expect(readFile(join(memoryDir, 'three.md'), 'utf8')).rejects.toMatchObject({ code: 'ENOENT' })
+  })
+
+  it('rejects summaries longer than the configured maximum without truncating', async () => {
+    const root = await createTempDir()
+
+    await expect(
+      writeMemoryEntry(
+        root,
+        { title: 'Long', file: 'long.md', summary: 'too long', content: 'Do not write.\n' },
+        { memoryMaxLines: 10, memoryMaxLineLength: 7 }
+      )
+    ).resolves.toEqual({ ok: false, error: 'Memory summary is too long' })
+
+    await expect(readFile(join(root, '.cc-local', 'memory', 'long.md'), 'utf8')).rejects.toMatchObject({
+      code: 'ENOENT'
+    })
+  })
+
+  it('rejects newlines in title, file, or summary', async () => {
+    const cases = [
+      { title: 'Bad\ntitle', file: 'bad-title.md', summary: 'summary' },
+      { title: 'Title', file: 'bad\nfile.md', summary: 'summary' },
+      { title: 'Title', file: 'file.md', summary: 'bad\nsummary' }
+    ]
+
+    for (const entry of cases) {
+      const root = await createTempDir()
+
+      await expect(
+        writeMemoryEntry(
+          root,
+          { ...entry, content: 'Do not write.\n' },
+          { memoryMaxLines: 10, memoryMaxLineLength: 80 }
+        )
+      ).resolves.toEqual({ ok: false, error: 'Memory index entries cannot contain newlines' })
+    }
+  })
+
+  it('rejects symlinked memory targets without writing through them', async () => {
+    const root = await createTempDir()
+    const memoryDir = await createMemoryDir(root)
+    const outsideFile = join(await createTempDir(), 'outside.md')
+    await writeFile(outsideFile, 'Outside content.\n')
+    await symlink(outsideFile, join(memoryDir, 'link.md'))
+
+    const result = await writeMemoryEntry(
+      root,
+      { title: 'Link', file: 'link.md', summary: 'symlink target', content: 'Do not write.\n' },
+      { memoryMaxLines: 10, memoryMaxLineLength: 80 }
+    )
+
+    expect(result.ok).toBe(false)
+    await expect(readFile(outsideFile, 'utf8')).resolves.toBe('Outside content.\n')
+    await expect(readFile(join(memoryDir, 'MEMORY.md'), 'utf8')).rejects.toMatchObject({ code: 'ENOENT' })
   })
 })

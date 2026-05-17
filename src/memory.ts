@@ -280,6 +280,52 @@ export async function saveSessionSummary(cwd: string, content: string): Promise<
   await writeAvailableSessionFile(sessionsDir, new Date().toISOString().slice(0, 10), content)
 }
 
+export interface MemoryWriteLimits {
+  memoryMaxLines: number
+  memoryMaxLineLength: number
+}
+
+export type MemoryWriteResult = { ok: true; file: string } | { ok: false; error: string }
+
+export async function writeMemoryEntry(
+  cwd: string,
+  entry: { title: string; file: string; summary: string; content: string },
+  limits: MemoryWriteLimits
+): Promise<MemoryWriteResult> {
+  try {
+    validateMemoryIndexEntry(entry)
+
+    if (entry.summary.length > limits.memoryMaxLineLength) {
+      return { ok: false, error: 'Memory summary is too long' }
+    }
+
+    const memoryDir = await getWritableMemoryDir(cwd)
+    const memoryIndexPath = await getWritableFilePath(join(memoryDir, 'MEMORY.md'), memoryDir)
+    const existingIndex = await readMemoryIndexIfExists(memoryIndexPath)
+    const existingLines = existingIndex.split(/\r?\n/).filter((line) => line.trim() !== '').length
+    if (existingLines >= limits.memoryMaxLines) {
+      return { ok: false, error: 'MEMORY.md is full' }
+    }
+
+    const memoryFilePath = resolve(memoryDir, entry.file)
+    if (!isPathInside(memoryDir, memoryFilePath)) {
+      return { ok: false, error: 'Memory file must stay inside memory directory' }
+    }
+
+    await getWritableFilePath(memoryFilePath, memoryDir)
+    await writeFile(memoryFilePath, entry.content, { flag: 'wx' })
+    await appendMemoryIndexEntry(memoryIndexPath, existingIndex, entry)
+
+    return { ok: true, file: entry.file }
+  } catch (error) {
+    if (error instanceof Error) {
+      return { ok: false, error: error.message }
+    }
+
+    return { ok: false, error: 'Failed to write memory entry' }
+  }
+}
+
 export async function updateMemoryIndex(
   cwd: string,
   entry: { title: string; file: string; summary: string }
@@ -288,18 +334,8 @@ export async function updateMemoryIndex(
 
   const memoryDir = await getWritableMemoryDir(cwd)
   const memoryIndexPath = await getWritableFilePath(join(memoryDir, 'MEMORY.md'), memoryDir)
-  let prefix = ''
-
-  try {
-    const existingIndex = await readFile(memoryIndexPath, 'utf8')
-    prefix = existingIndex === '' || existingIndex.endsWith('\n') ? '' : '\n'
-  } catch (error) {
-    if (!isMissingFileError(error)) {
-      throw error
-    }
-  }
-
-  await appendNoFollow(memoryIndexPath, `${prefix}- [${entry.title}](${entry.file}) — ${entry.summary}\n`)
+  const existingIndex = await readMemoryIndexIfExists(memoryIndexPath)
+  await appendMemoryIndexEntry(memoryIndexPath, existingIndex, entry)
 }
 
 async function getWritableMemoryDir(cwd: string): Promise<string> {
@@ -424,6 +460,27 @@ async function appendNoFollow(filePath: string, content: string): Promise<void> 
   } finally {
     await file.close()
   }
+}
+
+async function readMemoryIndexIfExists(memoryIndexPath: string): Promise<string> {
+  try {
+    return await readFile(memoryIndexPath, 'utf8')
+  } catch (error) {
+    if (isMissingFileError(error)) {
+      return ''
+    }
+
+    throw error
+  }
+}
+
+async function appendMemoryIndexEntry(
+  memoryIndexPath: string,
+  existingIndex: string,
+  entry: { title: string; file: string; summary: string }
+): Promise<void> {
+  const prefix = existingIndex === '' || existingIndex.endsWith('\n') ? '' : '\n'
+  await appendNoFollow(memoryIndexPath, `${prefix}- [${entry.title}](${entry.file}) — ${entry.summary}\n`)
 }
 
 function validateMemoryIndexEntry(entry: { title: string; file: string; summary: string }): void {
