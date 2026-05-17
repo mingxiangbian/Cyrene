@@ -1,4 +1,11 @@
-import { buildInitialMessages, compactHistory, compactToolResult } from './context.js'
+import {
+  buildInitialMessages,
+  collapseConsecutiveCalls,
+  compactHistory,
+  compactToolResult,
+  microcompactToolResults,
+  snipMessages
+} from './context.js'
 import type { AppConfig } from './config.js'
 import { callModel as defaultCallModel, type ChatMessage, type ModelResponse } from './llm-client.js'
 import { estimateTokensForMessages } from './token-counter.js'
@@ -52,12 +59,14 @@ export async function runAgentLoop(input: RunAgentLoopInput): Promise<RunAgentLo
   let lastUnchangedCompactSignature: string | undefined
 
   while (toolCallCount < input.config.maxToolCallsPerTurn) {
-    const tokenThreshold = input.config.contextWindowTokens * input.config.autoCompactThreshold
-    if (estimateTokensForMessages(messages) >= tokenThreshold) {
+    applyStagedCompression(messages, input.config)
+
+    const autoCompactTokenThreshold = input.config.contextWindowTokens * input.config.autoCompactThreshold
+    if (estimateTokensForMessages(messages) >= autoCompactTokenThreshold) {
       const compactSignature = messageSignature(messages)
       if (compactSignature !== lastUnchangedCompactSignature) {
         const compactedMessages = await compactHistory(messages, {
-          thresholdTokens: tokenThreshold,
+          thresholdTokens: autoCompactTokenThreshold,
           keepRecentRounds: 8,
           summarize: async (text) => {
             const response = await callModel({
@@ -175,6 +184,31 @@ function messageSignature(messages: ChatMessage[]): string {
       tool_calls: message.tool_calls
     }))
   )
+}
+
+function applyStagedCompression(messages: ChatMessage[], config: AppConfig): void {
+  if (estimateTokensForMessages(messages) >= config.contextWindowTokens * config.snipThreshold) {
+    replaceMessagesIfChanged(messages, snipMessages(messages, config.snipKeepRounds))
+  }
+
+  if (estimateTokensForMessages(messages) >= config.contextWindowTokens * config.microcompactThreshold) {
+    replaceMessagesIfChanged(
+      messages,
+      microcompactToolResults(messages, config.microcompactKeepRecentRounds)
+    )
+  }
+
+  if (estimateTokensForMessages(messages) >= config.contextWindowTokens * config.collapseThreshold) {
+    replaceMessagesIfChanged(messages, collapseConsecutiveCalls(messages))
+  }
+}
+
+function replaceMessagesIfChanged(messages: ChatMessage[], nextMessages: ChatMessage[]): void {
+  if (messageSignature(nextMessages) === messageSignature(messages)) {
+    return
+  }
+
+  messages.splice(0, messages.length, ...nextMessages)
 }
 
 function buildSummarizationPrompt(text: string): string {

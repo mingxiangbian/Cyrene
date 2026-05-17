@@ -202,6 +202,160 @@ describe('runAgentLoop', () => {
     expect(calls[0]?.tools).toEqual(toolDefinitionsShape([echoTool.name]))
   })
 
+  it('snips messages before model calls while preserving the caller message array', async () => {
+    const config = createDefaultConfig('/tmp/project')
+    config.contextWindowTokens = 10
+    config.snipThreshold = 0.1
+    config.microcompactThreshold = 99
+    config.collapseThreshold = 99
+    config.autoCompactThreshold = 99
+    config.snipKeepRounds = 1
+    const messages: ChatMessage[] = [
+      { role: 'user', content: 'old request with enough text to exceed the tiny threshold' },
+      {
+        role: 'assistant',
+        content: '',
+        tool_calls: [{ id: 'call-old', type: 'function', function: { name: 'echo', arguments: '{}' } }]
+      },
+      { role: 'tool', tool_call_id: 'call-old', content: 'old tool output' },
+      { role: 'user', content: 'recent request' }
+    ]
+
+    await runAgentLoop({
+      config,
+      messages,
+      tools: [echoTool],
+      callModel: async ({ messages: modelMessages }): Promise<ModelResponse> => {
+        expect(modelMessages).toBe(messages)
+        expect(modelMessages).toEqual([
+          { role: 'user', content: 'old request with enough text to exceed the tiny threshold' },
+          { role: 'user', content: 'recent request' }
+        ])
+        return { content: 'done', toolCalls: [] }
+      }
+    })
+
+    expect(messages.at(-1)).toEqual({ role: 'assistant', content: 'done' })
+  })
+
+  it('microcompacts old tool outputs before model calls', async () => {
+    const config = createDefaultConfig('/tmp/project')
+    config.contextWindowTokens = 10
+    config.snipThreshold = 99
+    config.microcompactThreshold = 0.1
+    config.collapseThreshold = 99
+    config.autoCompactThreshold = 99
+    config.microcompactKeepRecentRounds = 1
+    const messages: ChatMessage[] = [
+      { role: 'user', content: 'old request with enough text to exceed the tiny threshold' },
+      {
+        role: 'assistant',
+        content: '',
+        tool_calls: [{ id: 'call-old', type: 'function', function: { name: 'echo', arguments: '{}' } }]
+      },
+      { role: 'tool', tool_call_id: 'call-old', content: 'old tool output' },
+      { role: 'user', content: 'recent request' }
+    ]
+
+    await runAgentLoop({
+      config,
+      messages,
+      tools: [echoTool],
+      callModel: async ({ messages: modelMessages }): Promise<ModelResponse> => {
+        expect(modelMessages[2]).toEqual({
+          role: 'tool',
+          tool_call_id: 'call-old',
+          content: '[tool: echo - output truncated (15 chars)]'
+        })
+        return { content: 'done', toolCalls: [] }
+      }
+    })
+  })
+
+  it('re-estimates tokens after microcompact before deciding whether to collapse', async () => {
+    const config = createDefaultConfig('/tmp/project')
+    config.contextWindowTokens = 1_000
+    config.snipThreshold = 99
+    config.microcompactThreshold = 0.1
+    config.collapseThreshold = 1
+    config.autoCompactThreshold = 99
+    config.microcompactKeepRecentRounds = 0
+    const longOutput = 'x'.repeat(5_000)
+    const messages: ChatMessage[] = [
+      {
+        role: 'assistant',
+        content: '',
+        tool_calls: [{ id: 'call-1', type: 'function', function: { name: 'bash', arguments: '{}' } }]
+      },
+      { role: 'tool', tool_call_id: 'call-1', content: longOutput },
+      {
+        role: 'assistant',
+        content: '',
+        tool_calls: [{ id: 'call-2', type: 'function', function: { name: 'bash', arguments: '{}' } }]
+      },
+      { role: 'tool', tool_call_id: 'call-2', content: longOutput }
+    ]
+
+    await runAgentLoop({
+      config,
+      messages,
+      tools: [echoTool],
+      callModel: async ({ messages: modelMessages }): Promise<ModelResponse> => {
+        expect(modelMessages).toContainEqual({
+          role: 'tool',
+          tool_call_id: 'call-1',
+          content: '[tool: bash - output truncated (5000 chars)]'
+        })
+        expect(modelMessages).not.toContainEqual({
+          role: 'assistant',
+          content: expect.stringContaining('[collapsed 2 consecutive bash tool calls]')
+        })
+        return { content: 'done', toolCalls: [] }
+      }
+    })
+  })
+
+  it('collapses consecutive tool calls before model calls', async () => {
+    const config = createDefaultConfig('/tmp/project')
+    config.contextWindowTokens = 10
+    config.snipThreshold = 99
+    config.microcompactThreshold = 99
+    config.collapseThreshold = 0.1
+    config.autoCompactThreshold = 99
+    const messages: ChatMessage[] = [
+      {
+        role: 'assistant',
+        content: '',
+        tool_calls: [{ id: 'call-1', type: 'function', function: { name: 'bash', arguments: '{}' } }]
+      },
+      { role: 'tool', tool_call_id: 'call-1', content: 'first command' },
+      {
+        role: 'assistant',
+        content: '',
+        tool_calls: [{ id: 'call-2', type: 'function', function: { name: 'bash', arguments: '{}' } }]
+      },
+      { role: 'tool', tool_call_id: 'call-2', content: 'second command' }
+    ]
+
+    await runAgentLoop({
+      config,
+      messages,
+      tools: [echoTool],
+      callModel: async ({ messages: modelMessages }): Promise<ModelResponse> => {
+        expect(modelMessages).toEqual([
+          {
+            role: 'assistant',
+            content:
+              '[collapsed 2 consecutive bash tool calls]\n' +
+              '- call-1: first command\n' +
+              '- call-2: second command'
+          }
+        ])
+        return { content: 'done', toolCalls: [] }
+      }
+    })
+  })
+
   it('executes tool calls and feeds the result back to the model', async () => {
     let calls = 0
     const seenMessages: ChatMessage[][] = []
