@@ -10,6 +10,11 @@ export interface AppConfig {
   maxToolCallsPerTurn: number
   contextWindowTokens: number
   autoCompactThreshold: number
+  snipThreshold: number
+  microcompactThreshold: number
+  collapseThreshold: number
+  snipKeepRounds: number
+  microcompactKeepRecentRounds: number
   readMaxInlineLines: number
   grepMaxMatches: number
   bashTimeoutMs: number
@@ -31,6 +36,11 @@ export function createDefaultConfig(cwd: string): AppConfig {
     maxToolCallsPerTurn: 10,
     contextWindowTokens: 256_000,
     autoCompactThreshold: 0.7,
+    snipThreshold: 0.4,
+    microcompactThreshold: 0.5,
+    collapseThreshold: 0.6,
+    snipKeepRounds: 15,
+    microcompactKeepRecentRounds: 5,
     readMaxInlineLines: 500,
     grepMaxMatches: 30,
     bashTimeoutMs: 120_000,

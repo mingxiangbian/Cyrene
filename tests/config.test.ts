@@ -25,6 +25,11 @@ describe('createDefaultConfig', () => {
     expect(config.llmRequestTimeoutMs).toBe(180_000)
     expect(config.llmRetryMaxAttempts).toBe(3)
     expect(config.llmRetryBaseDelayMs).toBe(1_000)
+    expect(config.snipThreshold).toBe(0.4)
+    expect(config.microcompactThreshold).toBe(0.5)
+    expect(config.collapseThreshold).toBe(0.6)
+    expect(config.snipKeepRounds).toBe(15)
+    expect(config.microcompactKeepRecentRounds).toBe(5)
     expect(config.writableRoots).toEqual(['/tmp/project'])
   })
 
