@@ -32,10 +32,11 @@ async function main(): Promise<void> {
   const systemPromptPath = resolve(dirname(currentFile), 'prompts/system.md')
   const config = createDefaultConfig(resolve(options.cwd))
   const baseSystemPrompt = await readFile(systemPromptPath, 'utf8')
+  const currentDate = new Date().toISOString().slice(0, 10)
   const projectInstructions = await loadInstructionsIfExists(config.cwd)
   const memories = await loadMemories(config.cwd)
   const recentSummaries = await loadRecentSummaries(config.cwd, 3)
-  const systemPrompt = [baseSystemPrompt.trimEnd(), projectInstructions, memories, recentSummaries]
+  const systemPrompt = [baseSystemPrompt.trimEnd(), `# currentDate\nToday's date is ${currentDate}.`, projectInstructions, memories, recentSummaries]
     .filter(Boolean)
     .join('\n\n')
   const tools = createCoreTools()
