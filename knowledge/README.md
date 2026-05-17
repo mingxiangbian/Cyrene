@@ -28,6 +28,16 @@
 | 15 | [local-prefix-caching](15-local-prefix-caching.md) | 本地KV缓存 — vLLM vs SGLang、分层缓存 |
 | 16 | [local-agent-benchmarks](16-local-agent-benchmarks.md) | 基准测试 — BFCL V4/SWE-rebench、选模型决策树 |
 
+## Part 3: 记忆系统对比研究（17-21）
+
+| 编号 | 文件 | 内容 |
+|------|------|------|
+| 17 | [agentmemory-system](17-agentmemory-system.md) | agentmemory — 独立记忆服务器、三流检索(BM25+Vector+KG)、12 Hook自动捕获、4层合并管道 |
+| 18 | [codex-memory](18-codex-memory.md) | OpenAI Codex — 两阶段管道、encrypted_content压缩、no-op闸门、git式增量更新 |
+| 19 | [openclaw-memory](19-openclaw-memory.md) | OpenClaw — Dreaming梦境系统(3阶段)、6维评分、3道晋升闸门、压缩前抢救 |
+| 20 | [hermes-memory](20-hermes-memory.md) | Hermes — 冻结快照、硬容量限制(2200字符)、Periodic Nudge、on_pre_compress Hook |
+| 21 | [cc-memory-deep](21-claude-code-memory-deep.md) | Claude Code 深度 — KAIROS守护进程、Auto Dream(3操作)、3层作用域、200行索引上限 |
+
 ## 推荐阅读顺序
 
 ### 理解 Claude Code 架构 → 1, 2, 3, 4, 11, 12
