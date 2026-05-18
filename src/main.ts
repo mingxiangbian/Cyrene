@@ -67,7 +67,7 @@ async function main(): Promise<void> {
     return
   }
 
-  const observer = createTerminalObserver(process.stderr, { spinner: process.stderr.isTTY === true })
+  const observer = createTerminalObserver(process.stderr, { spinner: false, responseDivider: false })
   const result = await runAgentLoop({
     config,
     observer,

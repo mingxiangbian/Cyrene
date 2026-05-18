@@ -8,6 +8,11 @@ import { describe, expect, it } from 'vitest'
 
 const execFileAsync = promisify(execFile)
 
+function cliEnv(overrides: NodeJS.ProcessEnv = {}): NodeJS.ProcessEnv {
+  const { FORCE_COLOR: _forceColor, NO_COLOR: _noColor, ...env } = process.env
+  return { ...env, NO_COLOR: '1', ...overrides }
+}
+
 describe('main CLI', () => {
   it('appends soul, Rule.md stack, project/global memories, and daily memory to the system prompt', async () => {
     const home = await mkdtemp(join(tmpdir(), 'cc-local-main-home-'))
@@ -54,15 +59,15 @@ describe('main CLI', () => {
         process.execPath,
         ['node_modules/tsx/dist/cli.mjs', 'src/main.ts', '--cwd', root, 'hello'],
         {
-          env: {
-            ...process.env,
+          env: cliEnv({
             HOME: home,
             CC_LOCAL_BASE_URL: `http://127.0.0.1:${address.port}/v1`
-          }
+          })
         }
       )
 
       expect(result.stdout.trim()).toBe('ok')
+      expect(result.stderr).toBe('')
       const messages = (requestBody as { messages: Array<{ role: string; content: string }> }).messages
       expect(messages[1]).toEqual({ role: 'user', content: 'hello' })
       const systemPrompt = messages[0]?.content ?? ''
@@ -105,10 +110,9 @@ describe('main CLI', () => {
         process.execPath,
         ['node_modules/tsx/dist/cli.mjs', 'src/main.ts', 'hello'],
         {
-          env: {
-            ...process.env,
+          env: cliEnv({
             CC_LOCAL_BASE_URL: 'http://127.0.0.1:1/v1'
-          }
+          })
         }
       )
       throw new Error('CLI unexpectedly succeeded')
@@ -173,10 +177,9 @@ describe('main CLI', () => {
         process.execPath,
         ['node_modules/tsx/dist/cli.mjs', 'src/main.ts', '--cwd', process.cwd(), 'find package'],
         {
-          env: {
-            ...process.env,
+          env: cliEnv({
             CC_LOCAL_BASE_URL: `http://127.0.0.1:${address.port}/v1`
-          }
+          })
         }
       )
 
