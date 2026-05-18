@@ -1,12 +1,28 @@
-import { describe, expect, it } from 'vitest'
+import { Writable } from 'node:stream'
+import { describe, expect, it, vi } from 'vitest'
 import {
   PRISM_THEME,
+  createTerminalObserver,
   renderPrismMascot,
   renderWelcome,
   toolCallSummary,
   toolIcon,
   truncateOneLine
 } from '../src/ui-observer.js'
+
+class MemoryOutput extends Writable {
+  columns = 60
+  chunks: string[] = []
+
+  override _write(chunk: Buffer | string, _encoding: BufferEncoding, callback: (error?: Error | null) => void): void {
+    this.chunks.push(chunk.toString())
+    callback()
+  }
+
+  text(): string {
+    return this.chunks.join('')
+  }
+}
 
 describe('toolIcon', () => {
   it.each([
@@ -96,5 +112,59 @@ describe('Prism render helpers', () => {
     expect(welcome).toContain('Prism Agent')
     expect(welcome).toContain('Qwen3.5-9B-MLX-4bit')
     expect(welcome).toContain('/help')
+  })
+})
+
+describe('createTerminalObserver', () => {
+  it('renders a tool success on one line', () => {
+    const output = new MemoryOutput()
+    const observer = createTerminalObserver(output, { color: false })
+
+    observer.onToolCallStart('file_read', 'package.json')
+    observer.onToolCallResult('file_read', true, 300, '')
+
+    expect(output.text()).toContain('📖 file_read · package.json')
+    expect(output.text()).toContain('✓ 0.3s')
+  })
+
+  it('renders a tool failure with a truncated summary', () => {
+    const output = new MemoryOutput()
+    const observer = createTerminalObserver(output, { color: false })
+
+    observer.onToolCallStart('bash', 'npm test')
+    observer.onToolCallResult('bash', false, 1200, 'x'.repeat(100))
+
+    expect(output.text()).toContain('⚡ bash · npm test')
+    expect(output.text()).toContain('✗')
+    expect(output.text()).toContain(`${'x'.repeat(77)}...`)
+  })
+
+  it('stops thinking spinner writes after stop', () => {
+    vi.useFakeTimers()
+    try {
+      const output = new MemoryOutput()
+      const observer = createTerminalObserver(output, { color: false })
+
+      observer.onThinkingStart()
+      vi.advanceTimersByTime(1000)
+      observer.onThinkingStop(1000)
+      const stoppedText = output.text()
+      vi.advanceTimersByTime(2000)
+
+      expect(stoppedText).toContain('Thinking')
+      expect(output.text()).toBe(stoppedText)
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('prints a divider without printing the final response text', () => {
+    const output = new MemoryOutput()
+    const observer = createTerminalObserver(output, { color: false })
+
+    observer.onResponse('final answer')
+
+    expect(output.text()).toContain('─')
+    expect(output.text()).not.toContain('final answer')
   })
 })

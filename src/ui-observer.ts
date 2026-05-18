@@ -1,4 +1,5 @@
 import { basename } from 'node:path'
+import * as readline from 'node:readline'
 import chalk from 'chalk'
 
 export interface AgentObserver {
@@ -118,4 +119,83 @@ export function renderWelcome(input: { modelName: string; color?: boolean }): st
     : 'cc-local · Prism Agent'
   const model = color ? chalk.hex(PRISM_THEME.colors.muted)(`${input.modelName} · /help`) : `${input.modelName} · /help`
   return `${renderPrismMascot({ color })}\n${title}\n${model}`
+}
+
+export type OutputStream = NodeJS.WriteStream | (NodeJS.WritableStream & { columns?: number })
+
+const SPINNER_FRAMES = ['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏']
+
+function seconds(durationMs: number): string {
+  return `${(durationMs / 1000).toFixed(1)}s`
+}
+
+function write(output: NodeJS.WritableStream, text: string): void {
+  output.write(text)
+}
+
+function clearCurrentLine(output: NodeJS.WritableStream): void {
+  readline.clearLine(output, 0)
+  readline.cursorTo(output, 0)
+}
+
+function terminalWidth(output: OutputStream): number {
+  const columns = typeof output.columns === 'number' ? output.columns : 60
+  return Math.min(Math.max(columns, 20), 100)
+}
+
+export function createTerminalObserver(
+  output: OutputStream = process.stderr,
+  options: { color?: boolean } = {}
+): AgentObserver {
+  const color = options.color ?? true
+  let spinner: ReturnType<typeof setInterval> | undefined
+  let thinkingStartedAt = 0
+  let frameIndex = 0
+
+  const dim = (text: string): string => maybeColor(text, color, chalk.hex(PRISM_THEME.colors.muted))
+  const cyan = (text: string): string => maybeColor(text, color, chalk.hex(PRISM_THEME.colors.iceCyan))
+  const pink = (text: string): string => maybeColor(text, color, chalk.hex(PRISM_THEME.colors.softPink))
+
+  const stopSpinner = (): void => {
+    if (spinner === undefined) return
+    clearInterval(spinner)
+    spinner = undefined
+    clearCurrentLine(output)
+  }
+
+  const renderThinking = (): void => {
+    clearCurrentLine(output)
+    const elapsedMs = Date.now() - thinkingStartedAt
+    write(output, `${cyan(SPINNER_FRAMES[frameIndex])} ${dim(`Thinking ${seconds(elapsedMs)}`)}`)
+    frameIndex = (frameIndex + 1) % SPINNER_FRAMES.length
+  }
+
+  return {
+    onThinkingStart(): void {
+      stopSpinner()
+      thinkingStartedAt = Date.now()
+      frameIndex = 0
+      renderThinking()
+      spinner = setInterval(renderThinking, 100)
+    },
+    onThinkingStop(_durationMs: number): void {
+      stopSpinner()
+    },
+    onToolCallStart(name: string, summary: string): void {
+      stopSpinner()
+      const maxSummary = Math.max(10, terminalWidth(output) - name.length - 8)
+      write(output, `${toolIcon(name)} ${cyan(name)} ${dim('·')} ${truncateOneLine(summary, maxSummary)} `)
+    },
+    onToolCallResult(_name: string, ok: boolean, durationMs: number, summary: string): void {
+      if (ok) {
+        write(output, `${maybeColor('✓', color, chalk.green)} ${seconds(durationMs)}\n`)
+        return
+      }
+      write(output, `${pink('✗')} ${truncateOneLine(summary, 80)}\n`)
+    },
+    onResponse(_text: string): void {
+      stopSpinner()
+      write(output, `${dim('─'.repeat(terminalWidth(output)))}\n`)
+    }
+  }
 }
