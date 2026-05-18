@@ -4,6 +4,15 @@ import { dirname, isAbsolute, join, relative, resolve } from 'node:path'
 import type { AppConfig } from './config.js'
 import type { CallModelInput, ModelResponse } from './llm-client.js'
 
+export type MemoryType = 'user' | 'feedback' | 'project' | 'reference'
+
+interface MemoryIndexLine {
+  title: string
+  file: string
+  summary: string
+  type?: MemoryType
+}
+
 export async function loadInstructionsIfExists(cwd: string): Promise<string> {
   try {
     const content = await readFile(join(cwd, '.cc-local', 'instructions.md'), 'utf8')
@@ -77,13 +86,12 @@ export async function loadMemories(cwd: string): Promise<string> {
   const sections: string[] = []
 
   for (const line of index.split('\n')) {
-    const match = line.match(/^- \[([^\]]+)\]\(([^)]+)\) — .+$/)
-    if (!match) {
+    const entry = parseMemoryIndexLine(line)
+    if (entry === null) {
       continue
     }
 
-    const [, title, filename] = match
-    const memoryFilePath = resolve(memoryDir, filename)
+    const memoryFilePath = resolve(memoryDir, entry.file)
     if (!isPathInside(memoryDir, memoryFilePath)) {
       continue
     }
@@ -95,7 +103,7 @@ export async function loadMemories(cwd: string): Promise<string> {
       }
 
       const content = await readFile(memoryFileRealPath, 'utf8')
-      sections.push(`## Memory: ${title}\n\n${content.trim()}`)
+      sections.push(`${formatMemoryHeading('Memory', entry)}\n\n${content.trim()}`)
     } catch (error) {
       if (isMissingFileError(error)) {
         continue
@@ -177,13 +185,12 @@ export async function loadMemoryScope(memoryDir: string, heading: string): Promi
 
   const sections: string[] = []
   for (const line of index.split('\n')) {
-    const match = line.match(/^- \[([^\]]+)\]\(([^)]+)\) — .+$/)
-    if (!match) {
+    const entry = parseMemoryIndexLine(line)
+    if (entry === null) {
       continue
     }
 
-    const [, title, filename] = match
-    const memoryFilePath = resolve(memoryDir, filename)
+    const memoryFilePath = resolve(memoryDir, entry.file)
     if (!isPathInside(memoryDir, memoryFilePath)) {
       continue
     }
@@ -197,7 +204,7 @@ export async function loadMemoryScope(memoryDir: string, heading: string): Promi
       const content = await readFile(memoryFileRealPath, 'utf8')
       const trimmed = content.trim()
       if (trimmed !== '') {
-        sections.push(`## ${heading}: ${title}\n\n${trimmed}`)
+        sections.push(`${formatMemoryHeading(heading, entry)}\n\n${trimmed}`)
       }
     } catch (error) {
       if (isMissingFileError(error)) {
@@ -238,6 +245,29 @@ function getRuleStackDirectories(cwdRealPath: string, homeRealPath: string): str
   }
 
   return getAncestorDirectories(cwdRealPath)
+}
+
+function parseMemoryIndexLine(line: string): MemoryIndexLine | null {
+  const match = line.match(/^- \[([^\]]+)\]\(([^)]+)\) — (?:\[([^\]]+)\] )?(.+)$/)
+  if (!match) {
+    return null
+  }
+
+  const [, title, file, rawType, summary] = match
+  if (rawType !== undefined && !isMemoryType(rawType)) {
+    return null
+  }
+
+  return {
+    title,
+    file,
+    summary,
+    ...(rawType === undefined ? {} : { type: rawType })
+  }
+}
+
+function formatMemoryHeading(scope: string, entry: MemoryIndexLine): string {
+  return entry.type === undefined ? `## ${scope}: ${entry.title}` : `## ${scope} [${entry.type}]: ${entry.title}`
 }
 
 export async function loadRecentSummaries(cwd: string, count: number): Promise<string> {
@@ -751,6 +781,10 @@ function parseSessionFilename(filename: string): { date: string; suffix: number 
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null
+}
+
+function isMemoryType(value: string): value is MemoryType {
+  return value === 'user' || value === 'feedback' || value === 'project' || value === 'reference'
 }
 
 function getAncestorDirectories(cwdRealPath: string, stopExclusive?: string): string[] {

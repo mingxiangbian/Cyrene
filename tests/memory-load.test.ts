@@ -185,6 +185,15 @@ describe('loadMemories', () => {
     )
   })
 
+  it('loads typed memory files with type in the legacy heading', async () => {
+    const root = await createTempDir()
+    const memoryDir = await createMemoryDir(root)
+    await writeFile(join(memoryDir, 'MEMORY.md'), '- [Architecture](architecture.md) — [project] agent loop notes\n')
+    await writeFile(join(memoryDir, 'architecture.md'), 'Use small context windows.\n')
+
+    await expect(loadMemories(root)).resolves.toBe('## Memory [project]: Architecture\n\nUse small context windows.')
+  })
+
   it('skips malformed lines in MEMORY.md', async () => {
     const root = await createTempDir()
     const memoryDir = await createMemoryDir(root)
@@ -195,6 +204,19 @@ describe('loadMemories', () => {
     await writeFile(join(memoryDir, 'valid.md'), 'Load this one.\n')
 
     await expect(loadMemories(root)).resolves.toBe('## Memory: Valid\n\nLoad this one.')
+  })
+
+  it('skips typed memory index lines with invalid types', async () => {
+    const root = await createTempDir()
+    const memoryDir = await createMemoryDir(root)
+    await writeFile(
+      join(memoryDir, 'MEMORY.md'),
+      '- [Bad](bad.md) — [invalid] bad type\n- [Valid](valid.md) — [feedback] valid feedback\n'
+    )
+    await writeFile(join(memoryDir, 'bad.md'), 'Do not load.\n')
+    await writeFile(join(memoryDir, 'valid.md'), 'Load this one.\n')
+
+    await expect(loadMemories(root)).resolves.toBe('## Memory [feedback]: Valid\n\nLoad this one.')
   })
 
   it('skips memory files that do not exist', async () => {
@@ -290,6 +312,47 @@ describe('scoped memory loading', () => {
 
     await expect(loadMemoryScope(memoryDir, 'Project Memory')).resolves.toBe(
       '## Project Memory: Style\n\nKeep edits small.'
+    )
+  })
+
+  it('loads typed memory entries with scope and type in the heading', async () => {
+    const root = await createTempDir()
+    const memoryDir = await createMemoryDir(root)
+    await writeFile(join(memoryDir, 'MEMORY.md'), '- [Style](style.md) — [project] coding style\n')
+    await writeFile(join(memoryDir, 'style.md'), 'Keep edits small.\n')
+
+    await expect(loadMemoryScope(memoryDir, 'Project Memory')).resolves.toBe(
+      '## Project Memory [project]: Style\n\nKeep edits small.'
+    )
+  })
+
+  it('loads mixed typed and legacy memory entries', async () => {
+    const root = await createTempDir()
+    const memoryDir = await createMemoryDir(root)
+    await writeFile(
+      join(memoryDir, 'MEMORY.md'),
+      '- [Preference](preference.md) — [user] user preference\n- [Legacy](legacy.md) — legacy summary\n'
+    )
+    await writeFile(join(memoryDir, 'preference.md'), 'User prefers concise answers.\n')
+    await writeFile(join(memoryDir, 'legacy.md'), 'Legacy memory stays readable.\n')
+
+    await expect(loadMemoryScope(memoryDir, 'Global Memory')).resolves.toBe(
+      '## Global Memory [user]: Preference\n\nUser prefers concise answers.\n\n## Global Memory: Legacy\n\nLegacy memory stays readable.'
+    )
+  })
+
+  it('skips scoped memory entries with invalid types', async () => {
+    const root = await createTempDir()
+    const memoryDir = await createMemoryDir(root)
+    await writeFile(
+      join(memoryDir, 'MEMORY.md'),
+      '- [Bad](bad.md) — [invalid] bad type\n- [Reference](reference.md) — [reference] docs link\n'
+    )
+    await writeFile(join(memoryDir, 'bad.md'), 'Do not load.\n')
+    await writeFile(join(memoryDir, 'reference.md'), 'Read the deployment docs.\n')
+
+    await expect(loadMemoryScope(memoryDir, 'Project Memory')).resolves.toBe(
+      '## Project Memory [reference]: Reference\n\nRead the deployment docs.'
     )
   })
 
