@@ -44,8 +44,12 @@ describe('toolCallSummary', () => {
 
   it('falls back to compact raw text when JSON parsing fails', () => {
     expect(toolCallSummary('bash', 'not-json-with-a-very-long-value-that-keeps-going')).toBe(
-      'not-json-with-a-very-long-value-that-keeps'
+      'not-json-with-a-very-long-value-that-...'
     )
+  })
+
+  it('falls back safely for valid non-object JSON', () => {
+    expect(toolCallSummary('bash', 'null')).toBe('null')
   })
 })
 
@@ -56,11 +60,17 @@ describe('Prism render helpers', () => {
   })
 
   it('exports the approved Prism palette', () => {
-    expect(PRISM_THEME.colors.fogWhite).toBe('#F8FBFF')
-    expect(PRISM_THEME.colors.softPink).toBe('#F7A8CF')
-    expect(PRISM_THEME.colors.iceCyan).toBe('#86E6F1')
-    expect(PRISM_THEME.colors.lavender).toBe('#D8B7FF')
-    expect(PRISM_THEME.colors.ink).toBe('#2F3545')
+    expect(PRISM_THEME.colors).toEqual({
+      fogWhite: '#F8FBFF',
+      iceWhite: '#EAF7FF',
+      paleCyan: '#DDF7F8',
+      softPink: '#F7A8CF',
+      lavender: '#D8B7FF',
+      iceCyan: '#86E6F1',
+      glassBlue: '#B7D7FF',
+      ink: '#2F3545',
+      muted: '#6F7A90'
+    })
   })
 
   it('renders a high-recognition mascot with hair, braid, clip, coat, and prism accents', () => {

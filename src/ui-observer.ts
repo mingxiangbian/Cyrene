@@ -39,12 +39,18 @@ export function truncateOneLine(value: string, maxLength: number): string {
 }
 
 export function toolCallSummary(name: string, argumentsText: string): string {
-  let args: Record<string, unknown>
+  let parsed: unknown
   try {
-    args = JSON.parse(argumentsText) as Record<string, unknown>
+    parsed = JSON.parse(argumentsText)
   } catch {
-    return argumentsText.replace(/\s+/g, ' ').trim().slice(0, 42)
+    return truncateOneLine(argumentsText, 40)
   }
+
+  if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) {
+    return truncateOneLine(argumentsText, 40)
+  }
+
+  const args = parsed as Record<string, unknown>
 
   const stringArg = (key: string): string | undefined => {
     const value = args[key]
@@ -63,7 +69,7 @@ export function toolCallSummary(name: string, argumentsText: string): string {
   if (name === 'bash') return truncateOneLine(stringArg('command') ?? '', 60)
   if (name === 'web_search') return truncateOneLine(stringArg('query') ?? '', 60)
   if (name === 'ask_user') return truncateOneLine(stringArg('question') ?? '', 60)
-  return argumentsText.replace(/\s+/g, ' ').trim().slice(0, 42)
+  return truncateOneLine(argumentsText, 40)
 }
 
 function maybeColor(text: string, color: boolean, style: (input: string) => string): string {
