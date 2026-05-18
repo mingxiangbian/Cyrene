@@ -332,6 +332,49 @@ describe('runRepl', () => {
     }
   })
 
+  it('prints REPL tool-count metadata to stderr', async () => {
+    const config = createDefaultConfig('/tmp/project')
+    const readline = createTestReadline(['read file', 'exit'])
+    const compactMemories = vi.fn(async (_input) => ({ ok: true as const, promoted: 0 }))
+    let callCount = 0
+    const callModel = vi.fn(async (_input: CallModelInput): Promise<ModelResponse> => {
+      callCount += 1
+      if (callCount === 1) {
+        return {
+          content: '',
+          toolCalls: [
+            {
+              id: 'call-read',
+              type: 'function',
+              function: { name: 'track_read', arguments: '{}' }
+            }
+          ]
+        }
+      }
+
+      return { content: 'read done', toolCalls: [] }
+    })
+    const consoleLog = vi.spyOn(console, 'log').mockImplementation(() => {})
+    const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {})
+
+    try {
+      await runRepl({
+        config,
+        systemPrompt: 'system rules',
+        tools: [trackReadTool],
+        callModel,
+        readline,
+        compactMemories
+      })
+      expect(consoleLog).toHaveBeenCalledWith(expect.stringContaining('read done'))
+      expect(consoleLog.mock.calls.flat()).not.toContainEqual(expect.stringContaining('tool calls:'))
+      expect(consoleError).toHaveBeenCalledWith(expect.stringContaining('tool calls: 1'))
+    } finally {
+      consoleLog.mockRestore()
+      consoleError.mockRestore()
+    }
+  })
+
   it('skips daily compaction when the threshold is not reached', async () => {
     const root = await createTempDir()
     const memoryDir = join(root, '.cc-local', 'memory')

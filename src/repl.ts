@@ -122,7 +122,7 @@ export async function runRepl(inputConfig: {
 
       console.log(chalk.green(result.finalText))
       if (result.toolCallCount > 0) {
-        console.log(chalk.dim(`tool calls: ${result.toolCallCount}`))
+        console.error(chalk.dim(`tool calls: ${result.toolCallCount}`))
       }
     }
   } finally {
