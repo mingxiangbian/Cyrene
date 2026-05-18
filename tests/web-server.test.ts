@@ -41,6 +41,25 @@ describe('startWebServer', () => {
     expect(body).toContain('Prism Console')
     expect(body).toContain('app.js')
     expect(body).toContain('styles.css')
+    expect(body).toContain('id="sidebar"')
+    expect(body).toContain('id="messages"')
+    expect(body).toContain('id="inspector"')
+    expect(body).toContain('id="inspectorToggle"')
+    expect(body).toContain('id="leftResizeHandle"')
+  })
+
+  it('serves the Prism visual system from GET /static/styles.css', async () => {
+    const server = await startServer()
+
+    const response = await fetch(`${server.url}/static/styles.css`)
+    const body = await response.text()
+
+    expect(response.status).toBe(200)
+    expect(response.headers.get('content-type')).toContain('text/css')
+    expect(body).toContain('--pink: #f7a8cf')
+    expect(body).toContain('backdrop-filter')
+    expect(body).toContain('.left-resize-handle')
+    expect(body).toContain('.inspector.is-open')
   })
 
   it('rejects run creation without a user message', async () => {
