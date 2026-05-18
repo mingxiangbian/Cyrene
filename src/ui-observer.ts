@@ -51,6 +51,7 @@ export function toolCallSummary(name: string, argumentsText: string): string {
   }
 
   const args = parsed as Record<string, unknown>
+  const fallback = (): string => truncateOneLine(argumentsText, 40)
 
   const stringArg = (key: string): string | undefined => {
     const value = args[key]
@@ -58,18 +59,33 @@ export function toolCallSummary(name: string, argumentsText: string): string {
   }
 
   if (name === 'file_read' || name === 'file_write') {
-    return basename(stringArg('file_path') ?? '')
+    const filePath = stringArg('file_path')
+    return filePath === undefined ? fallback() : basename(filePath)
   }
   if (name === 'file_edit') {
-    const file = basename(stringArg('file_path') ?? '')
+    const filePath = stringArg('file_path')
+    if (filePath === undefined) return fallback()
+    const file = basename(filePath)
     const line = args.line
     return typeof line === 'number' ? `${file}:${line}` : file
   }
-  if (name === 'grep' || name === 'glob') return truncateOneLine(stringArg('pattern') ?? '', 60)
-  if (name === 'bash') return truncateOneLine(stringArg('command') ?? '', 60)
-  if (name === 'web_search') return truncateOneLine(stringArg('query') ?? '', 60)
-  if (name === 'ask_user') return truncateOneLine(stringArg('question') ?? '', 60)
-  return truncateOneLine(argumentsText, 40)
+  if (name === 'grep' || name === 'glob') {
+    const pattern = stringArg('pattern')
+    return pattern === undefined ? fallback() : truncateOneLine(pattern, 60)
+  }
+  if (name === 'bash') {
+    const command = stringArg('command')
+    return command === undefined ? fallback() : truncateOneLine(command, 60)
+  }
+  if (name === 'web_search') {
+    const query = stringArg('query')
+    return query === undefined ? fallback() : truncateOneLine(query, 60)
+  }
+  if (name === 'ask_user') {
+    const question = stringArg('question')
+    return question === undefined ? fallback() : truncateOneLine(question, 60)
+  }
+  return fallback()
 }
 
 function maybeColor(text: string, color: boolean, style: (input: string) => string): string {

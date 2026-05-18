@@ -51,6 +51,11 @@ describe('toolCallSummary', () => {
   it('falls back safely for valid non-object JSON', () => {
     expect(toolCallSummary('bash', 'null')).toBe('null')
   })
+
+  it('falls back when known tools receive the wrong fields', () => {
+    expect(toolCallSummary('bash', '{"cmd":"ls"}')).toBe('{"cmd":"ls"}')
+    expect(toolCallSummary('file_read', '{"path":"/tmp/a"}')).toBe('{"path":"/tmp/a"}')
+  })
 })
 
 describe('Prism render helpers', () => {
