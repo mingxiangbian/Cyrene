@@ -23,16 +23,28 @@ form?.addEventListener('submit', async (event) => {
 
   const { runId } = await response.json()
   const stream = new EventSource(`/api/runs/${runId}/events`)
-  for (const type of ['thinking_start', 'thinking_stop', 'tool_start', 'tool_result', 'final', 'error']) {
-    stream.addEventListener(type, (message) => {
-      const data = JSON.parse(message.data)
-      appendEvent(type, data.text ?? data.summary ?? data.message ?? type)
-      if (type === 'final' || type === 'error') {
-        stream.close()
-      }
-    })
-  }
+  stream.addEventListener('message', (message) => {
+    const data = JSON.parse(message.data)
+    appendEvent(data.type, eventText(data))
+    if (data.type === 'final' || data.type === 'error') {
+      stream.close()
+    }
+  })
 })
+
+function eventText(data) {
+  switch (data.type) {
+    case 'final':
+      return data.text
+    case 'error':
+      return data.message
+    case 'tool_start':
+    case 'tool_result':
+      return data.summary
+    default:
+      return data.type
+  }
+}
 
 function appendEvent(type, text) {
   const node = document.createElement('div')

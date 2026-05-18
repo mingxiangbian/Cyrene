@@ -221,7 +221,7 @@ function streamRunEvents(
 }
 
 function writeSseEvent(response: ServerResponse, event: WebRunEvent): void {
-  response.write(`event: ${event.type}\n`)
+  response.write('event: message\n')
   response.write(`data: ${JSON.stringify(event)}\n\n`)
 }
 

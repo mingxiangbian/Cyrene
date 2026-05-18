@@ -75,9 +75,9 @@ describe('startWebServer', () => {
 
     expect(streamResponse.status).toBe(200)
     expect(streamResponse.headers.get('content-type')).toContain('text/event-stream')
-    expect(streamBody).toContain('event: thinking_start')
-    expect(streamBody).toContain('event: final')
-    expect(streamBody).toContain('"text":"web answer"')
+    expect(streamBody).toContain('event: message')
+    expect(streamBody).toContain('"type":"thinking_start"')
+    expect(streamBody).toContain('"type":"final","text":"web answer"')
     expect(callModel).toHaveBeenCalledWith(expect.objectContaining({
       messages: expect.arrayContaining([{ role: 'user', content: 'hello web' }])
     } satisfies Partial<CallModelInput>))
