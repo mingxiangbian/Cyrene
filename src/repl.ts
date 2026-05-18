@@ -1,4 +1,4 @@
-import { stdin as input, stdout as output } from 'node:process'
+import { stderr, stdin as input, stdout as output } from 'node:process'
 import { createInterface } from 'node:readline/promises'
 import chalk from 'chalk'
 import { runAgentLoop } from './agent-loop.js'
@@ -11,6 +11,7 @@ import {
   type CompactMemoriesResult
 } from './memory.js'
 import type { Tool, ToolContext } from './tools/types.js'
+import { createTerminalObserver, renderWelcome, type AgentObserver } from './ui-observer.js'
 
 export interface RunReplTurnInput {
   config: AppConfig
@@ -18,13 +19,15 @@ export interface RunReplTurnInput {
   messages: ChatMessage[]
   input: string
   tools: Tool<unknown>[]
+  observer?: AgentObserver
   toolContext?: ToolContext
   callModel?: (input: CallModelInput) => Promise<ModelResponse>
 }
 
 export type RunReplTurnResult =
-  | { exit: true }
-  | { exit: false; finalText: string; toolCallCount: number }
+  | { kind: 'exit' }
+  | { kind: 'handled'; output?: string }
+  | { kind: 'agent'; finalText: string; toolCallCount: number }
 
 interface ReplReadline {
   question(prompt: string): Promise<string>
@@ -33,8 +36,31 @@ interface ReplReadline {
 
 export async function runReplTurn(input: RunReplTurnInput): Promise<RunReplTurnResult> {
   const text = input.input.trim()
+  if (text === '') {
+    return { kind: 'handled' }
+  }
+
   if (isExitInput(text)) {
-    return { exit: true }
+    return { kind: 'exit' }
+  }
+
+  if (text === '/help') {
+    return {
+      kind: 'handled',
+      output: [
+        'Commands:',
+        '  /help          Show this help',
+        '  /model         Show model info',
+        '  exit, quit, q  Exit REPL'
+      ].join('\n')
+    }
+  }
+
+  if (text === '/model') {
+    return {
+      kind: 'handled',
+      output: [`Model:  ${input.config.model.model}`, `API:    ${input.config.model.baseUrl}`].join('\n')
+    }
   }
 
   input.messages.push({ role: 'user', content: text })
@@ -42,11 +68,12 @@ export async function runReplTurn(input: RunReplTurnInput): Promise<RunReplTurnR
     config: input.config,
     messages: input.messages,
     tools: input.tools,
+    observer: input.observer,
     toolContext: input.toolContext,
     callModel: input.callModel
   })
 
-  return { exit: false, finalText: result.finalText, toolCallCount: result.toolCallCount }
+  return { kind: 'agent', finalText: result.finalText, toolCallCount: result.toolCallCount }
 }
 
 export async function runRepl(inputConfig: {
@@ -63,9 +90,12 @@ export async function runRepl(inputConfig: {
     trackedFiles: new Set<string>()
   }
   const rl = inputConfig.readline ?? createInterface({ input, output })
+  const observer = createTerminalObserver(stderr)
   let gracefulExit = false
 
   try {
+    console.log(renderWelcome({ modelName: inputConfig.config.model.model }))
+
     while (true) {
       const line = await rl.question('> ')
       const result = await runReplTurn({
@@ -73,13 +103,21 @@ export async function runRepl(inputConfig: {
         messages,
         input: line,
         tools: inputConfig.tools,
+        observer,
         toolContext,
         callModel: inputConfig.callModel
       })
 
-      if (result.exit) {
+      if (result.kind === 'exit') {
         gracefulExit = true
         break
+      }
+
+      if (result.kind === 'handled') {
+        if (result.output) {
+          console.log(result.output)
+        }
+        continue
       }
 
       console.log(chalk.green(result.finalText))

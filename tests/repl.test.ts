@@ -7,6 +7,7 @@ import { createDefaultConfig } from '../src/config.js'
 import type { CallModelInput, ChatMessage, ModelResponse } from '../src/llm-client.js'
 import { runRepl, runReplTurn } from '../src/repl.js'
 import type { Tool } from '../src/tools/types.js'
+import type { AgentObserver } from '../src/ui-observer.js'
 
 const trackReadTool: Tool<Record<string, never>> = {
   name: 'track_read',
@@ -90,7 +91,7 @@ describe('runReplTurn', () => {
       callModel
     })
 
-    expect(result).toEqual({ exit: false, finalText: 'hello back', toolCallCount: 0 })
+    expect(result).toEqual({ kind: 'agent', finalText: 'hello back', toolCallCount: 0 })
     expect(callModel).toHaveBeenCalledTimes(1)
     expect(seenMessages[0]).toEqual([
       { role: 'system', content: 'system rules' },
@@ -110,7 +111,7 @@ describe('runReplTurn', () => {
       callModel
     })
 
-    expect(secondResult).toEqual({ exit: false, finalText: 'second answer', toolCallCount: 0 })
+    expect(secondResult).toEqual({ kind: 'agent', finalText: 'second answer', toolCallCount: 0 })
     expect(seenMessages[1]).toEqual([
       { role: 'system', content: 'system rules' },
       { role: 'user', content: 'hello' },
@@ -133,7 +134,45 @@ describe('runReplTurn', () => {
       callModel
     })
 
-    expect(result).toEqual({ exit: true })
+    expect(result).toEqual({ kind: 'exit' })
+    expect(callModel).not.toHaveBeenCalled()
+    expect(messages).toEqual([{ role: 'system', content: 'system rules' }])
+  })
+
+  it('handles empty input without calling the model or mutating history', async () => {
+    const messages: ChatMessage[] = [{ role: 'system', content: 'system rules' }]
+    const callModel = vi.fn(
+      async (_input: CallModelInput): Promise<ModelResponse> => ({ content: 'unused', toolCalls: [] })
+    )
+
+    const result = await runReplTurn({
+      config: createDefaultConfig('/tmp/project'),
+      messages,
+      input: '   ',
+      tools: [],
+      callModel
+    })
+
+    expect(result).toEqual({ kind: 'handled' })
+    expect(callModel).not.toHaveBeenCalled()
+    expect(messages).toEqual([{ role: 'system', content: 'system rules' }])
+  })
+
+  it('handles /help and /model without calling the model', async () => {
+    const messages: ChatMessage[] = [{ role: 'system', content: 'system rules' }]
+    const config = createDefaultConfig('/tmp/project')
+    const callModel = vi.fn(
+      async (_input: CallModelInput): Promise<ModelResponse> => ({ content: 'unused', toolCalls: [] })
+    )
+
+    await expect(runReplTurn({ config, messages, input: '/help', tools: [], callModel })).resolves.toEqual({
+      kind: 'handled',
+      output: ['Commands:', '  /help          Show this help', '  /model         Show model info', '  exit, quit, q  Exit REPL'].join('\n')
+    })
+    await expect(runReplTurn({ config, messages, input: '/model', tools: [], callModel })).resolves.toEqual({
+      kind: 'handled',
+      output: [`Model:  ${config.model.model}`, `API:    ${config.model.baseUrl}`].join('\n')
+    })
     expect(callModel).not.toHaveBeenCalled()
     expect(messages).toEqual([{ role: 'system', content: 'system rules' }])
   })
@@ -199,7 +238,31 @@ describe('runReplTurn', () => {
       callModel
     })
 
-    expect(secondResult).toEqual({ exit: false, finalText: 'second done', toolCallCount: 1 })
+    expect(secondResult).toEqual({ kind: 'agent', finalText: 'second done', toolCallCount: 1 })
+  })
+
+  it('passes the observer through to the agent loop', async () => {
+    const messages: ChatMessage[] = [{ role: 'system', content: 'system rules' }]
+    const events: string[] = []
+    const observer: AgentObserver = {
+      onThinkingStart: () => events.push('thinking:start'),
+      onThinkingStop: () => events.push('thinking:stop'),
+      onToolCallStart: () => events.push('tool:start'),
+      onToolCallResult: () => events.push('tool:result'),
+      onResponse: () => events.push('response')
+    }
+
+    const result = await runReplTurn({
+      config: createDefaultConfig('/tmp/project'),
+      messages,
+      input: 'hello',
+      tools: [],
+      observer,
+      callModel: async (): Promise<ModelResponse> => ({ content: 'hello back', toolCalls: [] })
+    })
+
+    expect(result).toEqual({ kind: 'agent', finalText: 'hello back', toolCallCount: 0 })
+    expect(events).toEqual(['thinking:start', 'thinking:stop', 'response'])
   })
 })
 
@@ -228,6 +291,8 @@ describe('runRepl', () => {
         readline,
         compactMemories
       })
+      expect(consoleLog).toHaveBeenCalledWith(expect.stringContaining('Prism Agent'))
+      expect(consoleLog).toHaveBeenCalledWith(expect.stringContaining(config.model.model))
     } finally {
       consoleLog.mockRestore()
     }
@@ -240,6 +305,31 @@ describe('runRepl', () => {
       config,
       callModel
     })
+  })
+
+  it('prints the Prism mascot welcome before reading REPL input', async () => {
+    const config = createDefaultConfig('/tmp/project')
+    const readline = createTestReadline(['exit'])
+    const compactMemories = vi.fn(async (_input) => ({ ok: true as const, promoted: 0 }))
+    const callModel = vi.fn(
+      async (_input: CallModelInput): Promise<ModelResponse> => ({ content: 'unused', toolCalls: [] })
+    )
+    const consoleLog = vi.spyOn(console, 'log').mockImplementation(() => {})
+
+    try {
+      await runRepl({
+        config,
+        systemPrompt: 'system rules',
+        tools: [],
+        callModel,
+        readline,
+        compactMemories
+      })
+      expect(consoleLog).toHaveBeenCalledWith(expect.stringContaining('Prism Agent'))
+      expect(consoleLog).toHaveBeenCalledWith(expect.stringContaining(config.model.model))
+    } finally {
+      consoleLog.mockRestore()
+    }
   })
 
   it('skips daily compaction when the threshold is not reached', async () => {
