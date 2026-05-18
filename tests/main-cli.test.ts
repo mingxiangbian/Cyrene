@@ -116,7 +116,7 @@ describe('main CLI', () => {
       const stderr = String((error as { stderr?: string }).stderr ?? '')
       expect((error as { code?: number }).code).toBe(1)
       expect(stderr).toContain('LLM request failed: fetch failed')
-      expect(stderr).not.toContain('at async main')
+      expect(stderr).not.toMatch(/\n\s*at\s+/)
     }
   })
 
@@ -181,6 +181,7 @@ describe('main CLI', () => {
 
       expect(result.stdout).toContain('final cli answer')
       expect(result.stdout).not.toContain('glob')
+      expect(result.stdout).not.toContain('tool calls:')
       expect(result.stderr).toContain('glob')
     } finally {
       await new Promise<void>((resolve, reject) => {
