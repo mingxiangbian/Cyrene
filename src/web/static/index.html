@@ -1,0 +1,23 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Prism Console</title>
+    <link rel="stylesheet" href="/static/styles.css">
+  </head>
+  <body>
+    <main class="console">
+      <header class="console__header">
+        <h1>Prism Console</h1>
+        <p>Local agent run stream</p>
+      </header>
+      <form id="run-form" class="composer">
+        <textarea id="prompt" name="prompt" rows="5" placeholder="Send a message"></textarea>
+        <button type="submit">Run</button>
+      </form>
+      <section id="events" class="events" aria-live="polite"></section>
+    </main>
+    <script type="module" src="/static/app.js"></script>
+  </body>
+</html>
