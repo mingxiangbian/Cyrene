@@ -30,16 +30,25 @@ interface RunRecord {
   done: boolean
 }
 
+interface WebServerContext {
+  callModel?: (input: CallModelInput) => Promise<ModelResponse>
+  runs: Map<string, RunRecord>
+  activeRuns: Set<Promise<void>>
+  runtime: Awaited<ReturnType<typeof buildAgentRuntime>>
+}
+
 const currentFile = fileURLToPath(import.meta.url)
 const staticDir = resolve(dirname(currentFile), 'static')
-const validRoles = new Set<ChatRole>(['system', 'user', 'assistant', 'tool'])
+const clientMessageRoles = new Set<ChatRole>(['user', 'assistant'])
 
 export async function startWebServer(input: StartWebServerInput): Promise<WebServerHandle> {
   const runtime = await buildAgentRuntime(input.cwd)
   const runs = new Map<string, RunRecord>()
+  const activeRuns = new Set<Promise<void>>()
 
   const server = createServer((request, response) => {
     void routeRequest(request, response, {
+      activeRuns,
       callModel: input.callModel,
       runs,
       runtime
@@ -61,8 +70,8 @@ export async function startWebServer(input: StartWebServerInput): Promise<WebSer
 
   return {
     url: `http://${input.host}:${(address as AddressInfo).port}`,
-    close: () =>
-      new Promise((resolveClose, rejectClose) => {
+    close: async () => {
+      await new Promise<void>((resolveClose, rejectClose) => {
         for (const run of runs.values()) {
           for (const client of run.clients) {
             client.end()
@@ -77,17 +86,15 @@ export async function startWebServer(input: StartWebServerInput): Promise<WebSer
           resolveClose()
         })
       })
+      await Promise.allSettled(activeRuns)
+    }
   }
 }
 
 async function routeRequest(
   request: IncomingMessage,
   response: ServerResponse,
-  context: {
-    callModel?: (input: CallModelInput) => Promise<ModelResponse>
-    runs: Map<string, RunRecord>
-    runtime: Awaited<ReturnType<typeof buildAgentRuntime>>
-  }
+  context: WebServerContext
 ): Promise<void> {
   const url = new URL(request.url ?? '/', 'http://localhost')
 
@@ -118,11 +125,7 @@ async function routeRequest(
 async function createRun(
   request: IncomingMessage,
   response: ServerResponse,
-  context: {
-    callModel?: (input: CallModelInput) => Promise<ModelResponse>
-    runs: Map<string, RunRecord>
-    runtime: Awaited<ReturnType<typeof buildAgentRuntime>>
-  }
+  context: WebServerContext
 ): Promise<void> {
   let body: unknown
   try {
@@ -132,7 +135,13 @@ async function createRun(
     return
   }
 
-  const messages = parseMessages(body)
+  const parsed = parseMessages(body)
+  if (!parsed.ok) {
+    writeJson(response, 400, { error: parsed.error })
+    return
+  }
+
+  const messages = parsed.messages
   if (messages.length === 0 || !messages.some((message) => message.role === 'user' && message.content.trim().length > 0)) {
     writeJson(response, 400, { error: 'At least one user message is required.' })
     return
@@ -148,9 +157,12 @@ async function createRun(
   context.runs.set(record.id, record)
   writeJson(response, 202, { runId: record.id })
 
-  queueMicrotask(() => {
-    void runWebAgent(record, context.runtime, context.callModel)
-  })
+  const runPromise = Promise.resolve()
+    .then(() => runWebAgent(record, context.runtime, context.callModel))
+    .finally(() => {
+      context.activeRuns.delete(runPromise)
+    })
+  context.activeRuns.add(runPromise)
 }
 
 async function runWebAgent(
@@ -162,7 +174,7 @@ async function runWebAgent(
     await runAgentLoop({
       config: runtime.config,
       tools: runtime.tools,
-      messages: [...record.messages],
+      messages: [{ role: 'system', content: runtime.systemPrompt }, ...record.messages],
       observer: createWebObserver((event) => emit(record, event)),
       callModel
     })
@@ -225,30 +237,26 @@ function writeSseEvent(response: ServerResponse, event: WebRunEvent): void {
   response.write(`data: ${JSON.stringify(event)}\n\n`)
 }
 
-function parseMessages(body: unknown): ChatMessage[] {
+function parseMessages(body: unknown): { ok: true; messages: ChatMessage[] } | { ok: false; error: string } {
   if (!isObject(body) || !Array.isArray(body.messages)) {
-    return []
+    return { ok: true, messages: [] }
   }
 
   const messages: ChatMessage[] = []
   for (const message of body.messages) {
-    if (!isObject(message) || typeof message.role !== 'string' || !validRoles.has(message.role as ChatRole) || typeof message.content !== 'string') {
-      return []
+    if (!isObject(message) || typeof message.role !== 'string' || typeof message.content !== 'string') {
+      return { ok: false, error: 'Invalid message.' }
     }
 
     const role = message.role as ChatRole
-    if (message.role === 'tool') {
-      if (typeof message.tool_call_id !== 'string' || message.tool_call_id.length === 0) {
-        return []
-      }
-      messages.push({ role, content: message.content, tool_call_id: message.tool_call_id })
-      continue
+    if (!clientMessageRoles.has(role)) {
+      return { ok: false, error: `Unsupported message role: ${message.role}.` }
     }
 
     messages.push({ role, content: message.content })
   }
 
-  return messages
+  return { ok: true, messages }
 }
 
 async function serveStaticFile(response: ServerResponse, relativePath: string): Promise<void> {
