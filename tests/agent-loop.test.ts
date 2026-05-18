@@ -4,6 +4,7 @@ import { runAgentLoop } from '../src/agent-loop.js'
 import { createDefaultConfig } from '../src/config.js'
 import type { ChatMessage, ModelResponse } from '../src/llm-client.js'
 import type { Tool, ToolContext } from '../src/tools/types.js'
+import type { AgentObserver } from '../src/ui-observer.js'
 
 const echoTool: Tool<{ text: string }> = {
   name: 'echo',
@@ -398,6 +399,136 @@ describe('runAgentLoop', () => {
     })
     expect(dailyChunks).toHaveLength(1)
     expect(dailyChunks[0]?.[0]).toMatch(/^\[\d{2}:\d{2}\] echo -> ok$/)
+  })
+
+  it('emits observer lifecycle events around model calls, tool calls, and final response', async () => {
+    const events: string[] = []
+    let calls = 0
+    const observer: AgentObserver = {
+      onThinkingStart() {
+        events.push('thinking:start')
+      },
+      onThinkingStop() {
+        events.push('thinking:stop')
+      },
+      onToolCallStart(name, summary) {
+        events.push(`tool:start:${name}:${summary}`)
+      },
+      onToolCallResult(name, ok) {
+        events.push(`tool:result:${name}:${ok}`)
+      },
+      onResponse() {
+        events.push('response')
+      }
+    }
+
+    const result = await runAgentLoop({
+      config: createDefaultConfig('/tmp/project'),
+      systemPrompt: 'system',
+      userPrompt: 'echo',
+      tools: [echoTool],
+      observer,
+      callModel: async (): Promise<ModelResponse> => {
+        calls += 1
+        if (calls === 1) {
+          return {
+            content: '',
+            toolCalls: [
+              {
+                id: 'call-1',
+                type: 'function',
+                function: { name: 'echo', arguments: '{"text":"hello"}' }
+              }
+            ]
+          }
+        }
+        return { content: 'done after tool', toolCalls: [] }
+      }
+    })
+
+    expect(result.finalText).toBe('done after tool')
+    expect(events).toEqual([
+      'thinking:start',
+      'thinking:stop',
+      'tool:start:echo:{"text":"hello"}',
+      'tool:result:echo:true',
+      'thinking:start',
+      'thinking:stop',
+      'response'
+    ])
+  })
+
+  it('emits thinking stop before rethrowing model errors', async () => {
+    const events: string[] = []
+    const modelError = new Error('model unavailable')
+    const observer: AgentObserver = {
+      onThinkingStart() {
+        events.push('thinking:start')
+      },
+      onThinkingStop() {
+        events.push('thinking:stop')
+      },
+      onToolCallStart() {
+        events.push('tool:start')
+      },
+      onToolCallResult() {
+        events.push('tool:result')
+      },
+      onResponse() {
+        events.push('response')
+      }
+    }
+
+    await expect(
+      runAgentLoop({
+        config: createDefaultConfig('/tmp/project'),
+        systemPrompt: 'system',
+        userPrompt: 'hello',
+        tools: [],
+        observer,
+        callModel: async (): Promise<ModelResponse> => {
+          throw modelError
+        }
+      })
+    ).rejects.toThrow(modelError)
+
+    expect(events).toEqual(['thinking:start', 'thinking:stop'])
+  })
+
+  it('ignores observer method exceptions and still returns the final answer', async () => {
+    const events: string[] = []
+    const observer: AgentObserver = {
+      onThinkingStart() {
+        events.push('thinking:start')
+        throw new Error('observer start failed')
+      },
+      onThinkingStop() {
+        events.push('thinking:stop')
+        throw new Error('observer stop failed')
+      },
+      onToolCallStart() {
+        throw new Error('observer tool start failed')
+      },
+      onToolCallResult() {
+        throw new Error('observer tool result failed')
+      },
+      onResponse() {
+        events.push('response')
+        throw new Error('observer response failed')
+      }
+    }
+
+    const result = await runAgentLoop({
+      config: createDefaultConfig('/tmp/project'),
+      systemPrompt: 'system',
+      userPrompt: 'hello',
+      tools: [],
+      observer,
+      callModel: async (): Promise<ModelResponse> => ({ content: 'final answer', toolCalls: [] })
+    })
+
+    expect(result.finalText).toBe('final answer')
+    expect(events).toEqual(['thinking:start', 'thinking:stop', 'response'])
   })
 
   it('logs failed tool calls to daily memory', async () => {

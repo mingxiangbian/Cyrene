@@ -12,6 +12,7 @@ import { callModel as defaultCallModel, type ChatMessage, type ModelResponse } f
 import { estimateTokensForMessages } from './token-counter.js'
 import { executeToolCall, toolDefinitions } from './tools/index.js'
 import type { Tool, ToolContext } from './tools/types.js'
+import { toolCallSummary, truncateOneLine, type AgentObserver } from './ui-observer.js'
 
 const WEB_SEARCH_UNAVAILABLE_MESSAGE = 'Web search has failed twice consecutively and appears unavailable. Use grep, glob, and file_read for local-only work. Do not call web_search again in this session.'
 const WEB_SEARCH_DISABLED_RESULT = 'web_search is unavailable in this session; use local tools or ask the user to retry later.'
@@ -20,6 +21,7 @@ interface RunAgentLoopBaseInput {
   config: AppConfig
   tools: Tool<unknown>[]
   toolContext?: ToolContext
+  observer?: AgentObserver
   dailyLogger?: {
     appendDaily: (cwd: string, chunks: string[]) => Promise<void>
   }
@@ -52,6 +54,7 @@ export interface RunAgentLoopResult {
 export async function runAgentLoop(input: RunAgentLoopInput): Promise<RunAgentLoopResult> {
   const messages = input.messages ?? buildInitialMessages(input.systemPrompt, input.userPrompt)
   const callModel = input.callModel ?? defaultCallModel
+  const observer = input.observer
   const context: ToolContext = input.toolContext ?? {
     config: input.config,
     trackedFiles: new Set<string>()
@@ -97,11 +100,18 @@ export async function runAgentLoop(input: RunAgentLoopInput): Promise<RunAgentLo
       }
     }
 
-    const response = await callModel({
-      config: input.config,
-      messages,
-      tools: toolDefinitions(input.tools)
-    })
+    const thinkingStartedAt = Date.now()
+    notifyObserver(() => observer?.onThinkingStart())
+    let response: ModelResponse
+    try {
+      response = await callModel({
+        config: input.config,
+        messages,
+        tools: toolDefinitions(input.tools)
+      })
+    } finally {
+      notifyObserver(() => observer?.onThinkingStop(Date.now() - thinkingStartedAt))
+    }
 
     if (response.toolCalls.length === 0) {
       if (response.content.trim().length === 0) {
@@ -109,6 +119,7 @@ export async function runAgentLoop(input: RunAgentLoopInput): Promise<RunAgentLo
         if (emptyFinalResponseCount > 1) {
           const finalText = 'Model returned an empty response. Try rephrasing the request or asking for a smaller step.'
           messages.push({ role: 'assistant', content: finalText })
+          notifyObserver(() => observer?.onResponse(finalText))
           return {
             finalText,
             toolCallCount
@@ -124,6 +135,7 @@ export async function runAgentLoop(input: RunAgentLoopInput): Promise<RunAgentLo
       }
 
       messages.push({ role: 'assistant', content: response.content })
+      notifyObserver(() => observer?.onResponse(response.content))
       return { finalText: response.content, toolCallCount }
     }
 
@@ -139,24 +151,36 @@ export async function runAgentLoop(input: RunAgentLoopInput): Promise<RunAgentLo
 
     for (const toolCall of toolCallsToRun) {
       toolCallCount += 1
-      const result = context.unavailableTools.has(toolCall.function.name)
+      const name = toolCall.function.name
+      const summary = toolCallSummary(name, toolCall.function.arguments)
+      const toolStartedAt = Date.now()
+      notifyObserver(() => observer?.onToolCallStart(name, summary))
+      const result = context.unavailableTools.has(name)
         ? {
             ok: false,
-            content: toolCall.function.name === 'web_search'
+            content: name === 'web_search'
               ? WEB_SEARCH_DISABLED_RESULT
-              : `${toolCall.function.name} is unavailable in this session; use local tools or ask the user to retry later.`
+              : `${name} is unavailable in this session; use local tools or ask the user to retry later.`
           }
         : await executeToolCall(
             {
               id: toolCall.id,
-              name: toolCall.function.name,
+              name,
               argumentsText: toolCall.function.arguments
             },
             input.tools,
             context
           )
+      notifyObserver(() =>
+        observer?.onToolCallResult(
+          name,
+          result.ok,
+          Date.now() - toolStartedAt,
+          summarizeToolResult(result.content, result.ok)
+        )
+      )
       const dailyFact = extractFactFromToolCall({
-        toolName: toolCall.function.name,
+        toolName: name,
         argumentsText: toolCall.function.arguments,
         ok: result.ok,
         content: result.content
@@ -171,7 +195,7 @@ export async function runAgentLoop(input: RunAgentLoopInput): Promise<RunAgentLo
         content: compactToolResult(result.content, 120)
       })
 
-      if (toolCall.function.name === 'web_search' && !context.unavailableTools.has('web_search')) {
+      if (name === 'web_search' && !context.unavailableTools.has('web_search')) {
         updateWebSearchAvailability(context, result.ok, messages)
       }
 
@@ -191,10 +215,22 @@ export async function runAgentLoop(input: RunAgentLoopInput): Promise<RunAgentLo
 
   const finalText = `Stopped after ${input.config.maxToolCallsPerTurn} tool calls to avoid an infinite loop.`
   messages.push({ role: 'assistant', content: finalText })
+  notifyObserver(() => observer?.onResponse(finalText))
   return {
     finalText,
     toolCallCount
   }
+}
+
+function notifyObserver(action: () => void): void {
+  try {
+    action()
+  } catch {
+  }
+}
+
+function summarizeToolResult(content: string, ok: boolean): string {
+  return truncateOneLine(content, ok ? 60 : 80)
 }
 
 function messageSignature(messages: ChatMessage[]): string {
