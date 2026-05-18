@@ -4,6 +4,7 @@ import { runAgentLoop } from './agent-loop.js'
 import { runRepl } from './repl.js'
 import { createTerminalObserver } from './ui-observer.js'
 import { buildAgentRuntime } from './web/prompt-context.js'
+import { startWebServer } from './web/server.js'
 
 const program = new Command()
 
@@ -14,17 +15,40 @@ async function main(): Promise<void> {
     .argument('[prompt...]', 'task for the agent')
     .option('--cwd <path>', 'working directory', process.cwd())
     .option('--repl', 'start an interactive session')
+    .option('--web', 'start local Web console')
+    .option('--host <host>', 'host for the Web console', '127.0.0.1')
+    .option('--port <port>', 'port for the Web console', '4317')
 
   program.parse()
 
-  const options = program.opts<{ cwd: string; repl?: boolean }>()
+  const options = program.opts<{ cwd: string; repl?: boolean; web?: boolean; host: string; port: string }>()
   const prompt = program.args.join(' ').trim()
-  if (!options.repl && !prompt) {
+  if (options.web && prompt) {
+    console.error('--web cannot be combined with a prompt.')
+    process.exit(1)
+  }
+  if (options.web && options.repl) {
+    console.error('--web cannot be combined with --repl.')
+    process.exit(1)
+  }
+  if (!options.repl && !options.web && !prompt) {
     console.error('Prompt cannot be empty.')
+    process.exit(1)
+  }
+  const port = Number(options.port)
+  if (options.web && (!Number.isInteger(port) || port < 0 || port > 65535)) {
+    console.error('--port must be an integer from 0 to 65535.')
     process.exit(1)
   }
 
   const { config, systemPrompt, tools } = await buildAgentRuntime(options.cwd)
+
+  if (options.web) {
+    const server = await startWebServer({ cwd: config.cwd, host: options.host, port })
+    console.log(`cc-local web listening at ${server.url}`)
+    await new Promise(() => {})
+    return
+  }
 
   if (options.repl) {
     await runRepl({ config, systemPrompt, tools })
