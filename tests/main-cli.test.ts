@@ -10,7 +10,7 @@ const execFileAsync = promisify(execFile)
 
 function cliEnv(overrides: NodeJS.ProcessEnv = {}): NodeJS.ProcessEnv {
   const { FORCE_COLOR: _forceColor, NO_COLOR: _noColor, ...env } = process.env
-  return { ...env, NO_COLOR: '1', ...overrides }
+  return { ...env, ...overrides }
 }
 
 describe('main CLI', () => {
@@ -188,6 +188,82 @@ describe('main CLI', () => {
       expect(result.stdout).not.toContain('tool calls:')
       expect(result.stderr).toContain('glob')
       expect(result.stderr).toContain('tool calls: 1')
+    } finally {
+      await new Promise<void>((resolve, reject) => {
+        server.close((error) => {
+          if (error) {
+            reject(error)
+            return
+          }
+          resolve()
+        })
+      })
+    }
+  })
+
+  it('prints final answer and tool-count metadata without ANSI color under FORCE_COLOR', async () => {
+    const server = createServer((request, response) => {
+      let body = ''
+      request.setEncoding('utf8')
+      request.on('data', (chunk) => {
+        body += chunk
+      })
+      request.on('end', () => {
+        const parsed = JSON.parse(body) as { messages: Array<{ role: string; content: string }> }
+        const hasToolResult = parsed.messages.some((message) => message.role === 'tool')
+        response.writeHead(200, { 'content-type': 'application/json' })
+
+        if (!hasToolResult) {
+          response.end(
+            JSON.stringify({
+              choices: [
+                {
+                  message: {
+                    content: '',
+                    tool_calls: [
+                      {
+                        id: 'call-1',
+                        type: 'function',
+                        function: {
+                          name: 'glob',
+                          arguments: JSON.stringify({ pattern: 'package.json' })
+                        }
+                      }
+                    ]
+                  }
+                }
+              ]
+            })
+          )
+          return
+        }
+
+        response.end(JSON.stringify({ choices: [{ message: { content: 'final cli answer' } }] }))
+      })
+    })
+
+    await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve))
+    const address = server.address()
+    if (address === null || typeof address === 'string') {
+      throw new Error('Expected TCP server address')
+    }
+
+    try {
+      const result = await execFileAsync(
+        process.execPath,
+        ['node_modules/tsx/dist/cli.mjs', 'src/main.ts', '--cwd', process.cwd(), 'find package'],
+        {
+          env: cliEnv({
+            FORCE_COLOR: '1',
+            CC_LOCAL_BASE_URL: `http://127.0.0.1:${address.port}/v1`
+          })
+        }
+      )
+
+      expect(result.stdout).toBe('final cli answer\n')
+      expect(result.stderr).toContain('glob')
+      expect(result.stderr.split('\n').filter((line) => line.includes('tool calls:'))).toEqual(['tool calls: 1'])
+      expect(result.stdout).not.toMatch(/\x1B\[[0-?]*[ -/]*[@-~]/)
     } finally {
       await new Promise<void>((resolve, reject) => {
         server.close((error) => {

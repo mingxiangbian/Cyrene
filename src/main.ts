@@ -2,7 +2,6 @@
 import { readFile } from 'node:fs/promises'
 import { dirname, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import chalk from 'chalk'
 import { Command } from 'commander'
 import { runAgentLoop } from './agent-loop.js'
 import { createDefaultConfig } from './config.js'
@@ -76,9 +75,9 @@ async function main(): Promise<void> {
     tools
   })
 
-  console.log(chalk.green(result.finalText))
+  console.log(result.finalText)
   if (result.toolCallCount > 0) {
-    console.error(chalk.dim(`tool calls: ${result.toolCallCount}`))
+    console.error(`tool calls: ${result.toolCallCount}`)
   }
 }
 
