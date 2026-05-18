@@ -39,16 +39,23 @@ describe('main CLI', () => {
   })
 
   it('rejects an invalid --port value', async () => {
-    try {
-      await execFileAsync(process.execPath, ['node_modules/tsx/dist/cli.mjs', 'src/main.ts', '--web', '--port', 'abc'], {
-        env: cliEnv()
-      })
-      throw new Error('CLI unexpectedly succeeded')
-    } catch (error) {
-      expect((error as { code?: number }).code).toBe(1)
-      expect(String((error as { stderr?: string }).stderr ?? '')).toContain(
-        '--port must be an integer from 0 to 65535.'
-      )
+    for (const portArg of ['abc', '--port=']) {
+      const args =
+        portArg === '--port='
+          ? ['node_modules/tsx/dist/cli.mjs', 'src/main.ts', '--web', portArg]
+          : ['node_modules/tsx/dist/cli.mjs', 'src/main.ts', '--web', '--port', portArg]
+
+      try {
+        await execFileAsync(process.execPath, args, {
+          env: cliEnv()
+        })
+        throw new Error('CLI unexpectedly succeeded')
+      } catch (error) {
+        expect((error as { code?: number }).code).toBe(1)
+        expect(String((error as { stderr?: string }).stderr ?? '')).toContain(
+          '--port must be an integer from 0 to 65535.'
+        )
+      }
     }
   })
 

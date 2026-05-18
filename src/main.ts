@@ -35,8 +35,9 @@ async function main(): Promise<void> {
     console.error('Prompt cannot be empty.')
     process.exit(1)
   }
-  const port = Number(options.port)
-  if (options.web && (!Number.isInteger(port) || port < 0 || port > 65535)) {
+  const validPortString = /^(0|[1-9]\d*)$/.test(options.port)
+  const port = validPortString ? Number(options.port) : NaN
+  if (options.web && (!validPortString || port < 0 || port > 65535)) {
     console.error('--port must be an integer from 0 to 65535.')
     process.exit(1)
   }
