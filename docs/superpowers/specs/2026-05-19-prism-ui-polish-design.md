@@ -61,6 +61,7 @@ The alignment changes are specific:
 - The `New chat` block uses `margin-inline: auto`.
 - Text inside `New chat` remains left-aligned.
 - The current session card follows the same centering rule: the card block is centered in the sidebar column, while the text inside remains left-aligned.
+- The current session card's text group should be vertically centered within the card, not pinned to the top.
 - Remove the redundant expanded-sidebar `Console` nav row. The app is already a single-view console, so the row does not provide useful navigation.
 
 Collapsed sidebar:
@@ -88,6 +89,8 @@ The Inspector expand control should move from the outer grid edge into the chat 
 
 - Place it in the chat panel's top-right corner.
 - It should be an icon-only rounded glass control.
+- It should sit above the header/status light band in the visual stacking order and must not overlap, mask, or truncate the band.
+- The header/status light band should reserve enough right-side space or run underneath a non-overlapping header layout so the gradient line remains visually continuous.
 - In closed state, the button opens the Inspector.
 - In open state, the button should disappear or become visually replaced by the Inspector's internal close control.
 - The button must not occupy a separate grid column when the Inspector is closed.
@@ -208,9 +211,11 @@ Manual browser QA:
 - Default layout shows left sidebar expanded and Inspector closed.
 - `New chat` block is centered in the sidebar, while its text remains left-aligned.
 - Current session card block is centered in the sidebar, while its text remains left-aligned.
+- Current session card text is vertically centered inside the card.
 - Chat panel and composer are clearly separated from the deeper background.
 - There is no obvious shadow between the sidebar and chat panel.
 - Inspector opener appears in the chat panel top-right.
+- Inspector opener does not truncate or cover the header/status light band.
 - Inspector opener disappears or yields to the Inspector close control when Inspector is open.
 - Send button is vertically centered in the composer.
 - Composer focus band is thin but visibly colorful.
