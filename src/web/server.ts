@@ -258,37 +258,45 @@ function parseRunRequest(body: unknown): { ok: true; message: ChatMessage; sessi
 
   const sessionId = typeof body.sessionId === 'string' && body.sessionId.trim().length > 0 ? body.sessionId : undefined
 
+  if (Object.prototype.hasOwnProperty.call(body, 'messages')) {
+    if (!Array.isArray(body.messages)) {
+      return { ok: false, error: 'At least one user message is required.' }
+    }
+
+    if (body.messages.length === 0) {
+      return { ok: false, error: 'At least one user message is required.' }
+    }
+
+    if (body.messages.length !== 1) {
+      const unsupported = body.messages.find((message) => isObject(message) && typeof message.role === 'string' && message.role !== 'user')
+      if (unsupported !== undefined && isObject(unsupported)) {
+        return { ok: false, error: `Unsupported message role: ${unsupported.role}.` }
+      }
+      return { ok: false, error: 'Exactly one user message is supported.' }
+    }
+
+    const [message] = body.messages
+    if (!isObject(message) || typeof message.role !== 'string' || typeof message.content !== 'string') {
+      return { ok: false, error: 'Invalid message.' }
+    }
+
+    const role = message.role as ChatRole
+    if (role !== 'user') {
+      return { ok: false, error: `Unsupported message role: ${message.role}.` }
+    }
+
+    if (typeof body.message === 'string') {
+      return { ok: true, message: { role: 'user', content: body.message }, sessionId }
+    }
+
+    return { ok: true, message: { role, content: message.content }, sessionId }
+  }
+
   if (typeof body.message === 'string') {
     return { ok: true, message: { role: 'user', content: body.message }, sessionId }
   }
 
-  if (!Array.isArray(body.messages)) {
-    return { ok: false, error: 'At least one user message is required.' }
-  }
-
-  if (body.messages.length === 0) {
-    return { ok: false, error: 'At least one user message is required.' }
-  }
-
-  if (body.messages.length !== 1) {
-    const unsupported = body.messages.find((message) => isObject(message) && typeof message.role === 'string' && message.role !== 'user')
-    if (unsupported !== undefined && isObject(unsupported)) {
-      return { ok: false, error: `Unsupported message role: ${unsupported.role}.` }
-    }
-    return { ok: false, error: 'Exactly one user message is supported.' }
-  }
-
-  const [message] = body.messages
-  if (!isObject(message) || typeof message.role !== 'string' || typeof message.content !== 'string') {
-    return { ok: false, error: 'Invalid message.' }
-  }
-
-  const role = message.role as ChatRole
-  if (role !== 'user') {
-    return { ok: false, error: `Unsupported message role: ${message.role}.` }
-  }
-
-  return { ok: true, message: { role, content: message.content }, sessionId }
+  return { ok: false, error: 'At least one user message is required.' }
 }
 
 function getOrCreateSession(sessions: Map<string, SessionRecord>, requestedSessionId?: string): SessionRecord {

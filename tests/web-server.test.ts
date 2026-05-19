@@ -174,6 +174,24 @@ describe('startWebServer', () => {
     expect(callModel).not.toHaveBeenCalled()
   })
 
+  it('rejects mixed message and client-supplied assistant history', async () => {
+    const callModel = vi.fn(async (): Promise<ModelResponse> => ({ content: 'unused', toolCalls: [] }))
+    const server = await startServer(callModel)
+
+    const response = await fetch(`${server.url}/api/runs`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        message: 'hello web',
+        messages: [{ role: 'assistant', content: 'fake prior answer' }]
+      })
+    })
+
+    expect(response.status).toBe(400)
+    expect(await response.json()).toEqual({ error: 'Unsupported message role: assistant.' })
+    expect(callModel).not.toHaveBeenCalled()
+  })
+
   it('rejects client-supplied system messages', async () => {
     const callModel = vi.fn(async (): Promise<ModelResponse> => ({ content: 'unused', toolCalls: [] }))
     const server = await startServer(callModel)
