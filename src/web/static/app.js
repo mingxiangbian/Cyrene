@@ -208,12 +208,53 @@ function finishWithError(error, stream) {
 
 function appendMessage(kind, text) {
   clearEmptyState()
+  if (kind === 'assistant') {
+    return appendAssistantMessage(text)
+  }
+
   const node = document.createElement('article')
   node.className = `message ${kind}`
-  node.textContent = text
+  node.setAttribute('aria-label', `${kind} message`)
+
+  const content = document.createElement('span')
+  content.className = 'message-content'
+  content.textContent = text
+
+  node.append(content)
   messages?.append(node)
   messages?.scrollTo({ top: messages.scrollHeight, behavior: 'smooth' })
   return node
+}
+
+function appendAssistantMessage(text) {
+  const group = document.createElement('article')
+  group.className = 'message-group assistant'
+  group.setAttribute('aria-label', 'Cyrene message')
+
+  const header = document.createElement('div')
+  header.className = 'message-identity'
+
+  const avatar = document.createElement('span')
+  avatar.className = 'assistant-avatar avatar-cartoon'
+  avatar.setAttribute('aria-hidden', 'true')
+
+  const name = document.createElement('span')
+  name.className = 'message-author'
+  name.textContent = 'Cyrene'
+
+  const bubble = document.createElement('div')
+  bubble.className = 'message assistant'
+
+  const content = document.createElement('span')
+  content.className = 'message-content'
+  content.textContent = text
+
+  header.append(avatar, name)
+  bubble.append(content)
+  group.append(header, bubble)
+  messages?.append(group)
+  messages?.scrollTo({ top: messages.scrollHeight, behavior: 'smooth' })
+  return group
 }
 
 function updateRunStatus(text) {
@@ -235,7 +276,7 @@ function renderEmptyState() {
   node.innerHTML = [
     '<div class="empty-orbit" aria-hidden="true"></div>',
     '<p class="eyebrow">Ready</p>',
-    '<h3>Ask Prism to work through a local task.</h3>',
+    '<h3>Ask Cyrene to work through a local task.</h3>',
     '<p>Run status and tool activity will stream here as the agent responds.</p>'
   ].join('')
   messages?.append(node)
