@@ -24,7 +24,6 @@ const inspectorContent = document.querySelector('#inspectorContent')
 const headerStatus = document.querySelector('#headerStatus')
 const chatHeading = document.querySelector('.chat-title h2')
 const sessionHistory = document.querySelector('#sessionHistory')
-const workspaceCurrent = document.querySelector('#workspaceCurrent')
 const workspaceChangeButton = document.querySelector('#workspaceChangeButton')
 const workspacePicker = document.querySelector('#workspacePicker')
 const tabs = Array.from(document.querySelectorAll('.tab'))
@@ -571,9 +570,6 @@ function renderWorkspacePanel() {
   const workspaceLocked = isWorkspaceLocked()
   const current = getCurrentWorkspace()
   const displayName = formatWorkspaceDisplayName(current)
-  if (workspaceCurrent) {
-    workspaceCurrent.textContent = displayName
-  }
   if (workspaceChangeButton) {
     workspaceChangeButton.disabled = workspaceLocked || state.workspaces.length === 0
     workspaceChangeButton.textContent = displayName
