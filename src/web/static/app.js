@@ -15,6 +15,9 @@ const inspectorContent = document.querySelector('#inspectorContent')
 const headerStatus = document.querySelector('#headerStatus')
 const chatHeading = document.querySelector('.chat-title h2')
 const sessionHistory = document.querySelector('#sessionHistory')
+const workspaceCurrent = document.querySelector('#workspaceCurrent')
+const workspaceChangeButton = document.querySelector('#workspaceChangeButton')
+const workspacePicker = document.querySelector('#workspacePicker')
 const tabs = Array.from(document.querySelectorAll('.tab'))
 
 const state = {
@@ -22,6 +25,14 @@ const state = {
   sessions: [],
   messages: [],
   activeRun: null,
+  isSending: false,
+  workspaces: [],
+  workspaceId: '',
+  markdownFiles: [],
+  selectedMarkdownId: '',
+  selectedMarkdownContent: '',
+  workspaceError: null,
+  markdownError: null,
   tools: [],
   resizingLeft: false,
   inspectorTab: 'tools',
@@ -30,6 +41,7 @@ const state = {
   runStatus: 'Ready'
 }
 
+void loadWorkspaces()
 void loadSessions()
 
 composer?.addEventListener('submit', (event) => {
@@ -51,6 +63,16 @@ sidebarToggle?.addEventListener('click', () => setSidebarCollapsed(true))
 railSidebarToggle?.addEventListener('click', () => setSidebarCollapsed(false))
 inspectorEdgeToggle?.addEventListener('click', () => setInspectorOpen(true))
 inspectorClose?.addEventListener('click', () => setInspectorOpen(false))
+workspaceChangeButton?.addEventListener('click', () => {
+  if (isWorkspaceLocked()) {
+    return
+  }
+  const nextHidden = !workspacePicker?.hidden
+  if (workspacePicker) {
+    workspacePicker.hidden = nextHidden
+  }
+  workspaceChangeButton.setAttribute('aria-expanded', String(!nextHidden))
+})
 
 function resetChat() {
   if (state.activeRun) {
@@ -130,7 +152,7 @@ async function sendPrompt() {
     response = await fetch('/api/runs', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ sessionId: state.sessionId, message: content })
+      body: JSON.stringify({ sessionId: state.sessionId, message: content, workspaceId: state.workspaceId })
     })
   } catch (error) {
     finishWithError(error)
@@ -297,6 +319,91 @@ async function loadSessions() {
   }
 }
 
+async function loadWorkspaces() {
+  state.workspaceError = null
+  let response
+  try {
+    response = await fetch('/api/workspaces')
+  } catch {
+    state.workspaceError = 'Unable to load workspaces.'
+    renderWorkspacePanel()
+    return
+  }
+  if (!response.ok) {
+    state.workspaceError = 'Unable to load workspaces.'
+    renderWorkspacePanel()
+    return
+  }
+  const body = await response.json()
+  state.workspaces = Array.isArray(body.workspaces) ? body.workspaces : []
+  if (!state.workspaces.some((workspace) => workspace.id === state.workspaceId)) {
+    state.workspaceId = state.workspaces[0]?.id || ''
+  }
+  renderWorkspacePanel()
+  await loadMarkdownFiles()
+}
+
+async function loadMarkdownFiles() {
+  state.markdownError = null
+  state.markdownFiles = []
+  state.selectedMarkdownId = ''
+  state.selectedMarkdownContent = ''
+  renderInspector()
+
+  let response
+  try {
+    response = await fetch(`/api/workspaces/${encodedWorkspaceId()}/markdown`)
+  } catch {
+    state.markdownError = 'Unable to load Markdown context.'
+    renderInspector()
+    return
+  }
+  if (!response.ok) {
+    state.markdownError = 'Unable to load Markdown context.'
+    renderInspector()
+    return
+  }
+  const body = await response.json()
+  state.markdownFiles = Array.isArray(body.files) ? body.files : []
+  state.selectedMarkdownId = state.markdownFiles[0]?.id || ''
+  if (state.selectedMarkdownId) {
+    await loadMarkdownFile(state.selectedMarkdownId)
+    return
+  }
+  renderInspector()
+}
+
+async function loadMarkdownFile(fileId) {
+  state.markdownError = null
+  state.selectedMarkdownId = fileId
+  state.selectedMarkdownContent = ''
+
+  let response
+  try {
+    response = await fetch(`/api/workspaces/${encodedWorkspaceId()}/markdown/${encodeURIComponent(fileId)}`)
+  } catch {
+    state.markdownError = 'Unable to load Markdown context.'
+    renderInspector()
+    return
+  }
+  if (!response.ok) {
+    state.markdownError = 'Unable to load Markdown context.'
+    renderInspector()
+    return
+  }
+  const body = await response.json()
+  state.selectedMarkdownContent = typeof body.file?.content === 'string' ? body.file.content : ''
+  renderInspector()
+}
+
+function encodedWorkspaceId() {
+  return state.workspaceId === '' ? '@root' : encodeURIComponent(state.workspaceId)
+}
+
+function isWorkspaceLocked() {
+  return state.isSending || state.activeRun !== null
+}
+
 async function loadSession(sessionId) {
   if (state.activeRun || sessionId === state.sessionId) {
     return
@@ -350,6 +457,43 @@ function renderSessionList() {
 
     button.append(title, preview)
     sessionHistory.append(button)
+  }
+}
+
+function renderWorkspacePanel() {
+  const workspaceLocked = isWorkspaceLocked()
+  if (workspaceCurrent) {
+    const current = state.workspaces.find((workspace) => workspace.id === state.workspaceId)
+    workspaceCurrent.textContent = state.workspaceError || current?.label || 'Workspace'
+  }
+  if (workspaceChangeButton) {
+    workspaceChangeButton.disabled = workspaceLocked || state.workspaces.length === 0
+    workspaceChangeButton.setAttribute('aria-expanded', String(workspacePicker?.hidden === false))
+  }
+  if (!workspacePicker) {
+    return
+  }
+
+  workspacePicker.replaceChildren()
+  for (const workspace of state.workspaces) {
+    const button = document.createElement('button')
+    button.type = 'button'
+    button.className = 'workspace-option'
+    button.classList.toggle('is-active', workspace.id === state.workspaceId)
+    button.disabled = workspaceLocked
+    button.textContent = workspace.label
+    button.addEventListener('click', () => {
+      if (isWorkspaceLocked()) {
+        return
+      }
+      state.workspaceId = workspace.id
+      state.selectedMarkdownContent = ''
+      workspacePicker.hidden = true
+      workspaceChangeButton?.setAttribute('aria-expanded', 'false')
+      renderWorkspacePanel()
+      void loadMarkdownFiles()
+    })
+    workspacePicker.append(button)
   }
 }
 
@@ -418,7 +562,7 @@ function renderInspector() {
   }
 
   if (state.inspectorTab === 'context') {
-    inspectorContent.replaceChildren(renderNote(`${state.messages.length} client message${state.messages.length === 1 ? '' : 's'} in this page session.`))
+    inspectorContent.replaceChildren(renderContextPanel())
     return
   }
 
@@ -433,6 +577,138 @@ function renderInspector() {
   }
 
   inspectorContent.replaceChildren(...state.tools.map(renderTool))
+}
+
+function renderContextPanel() {
+  if (state.markdownError) {
+    return renderNote('Unable to load Markdown context.')
+  }
+  if (state.markdownFiles.length === 0) {
+    return renderNote('No Markdown files in this workspace.')
+  }
+
+  const panel = document.createElement('div')
+  panel.className = 'context-panel'
+
+  const select = document.createElement('select')
+  select.className = 'markdown-file-select'
+  select.value = state.selectedMarkdownId
+  select.addEventListener('change', () => {
+    void loadMarkdownFile(select.value)
+  })
+
+  for (const file of state.markdownFiles) {
+    const option = document.createElement('option')
+    option.value = file.id
+    option.textContent = file.label || file.id
+    option.selected = file.id === state.selectedMarkdownId
+    select.append(option)
+  }
+
+  panel.append(select, renderMarkdownPreview(state.selectedMarkdownContent))
+  return panel
+}
+
+function renderMarkdownPreview(markdown) {
+  const preview = document.createElement('div')
+  preview.className = 'markdown-preview'
+  const lines = String(markdown || '').split(/\r?\n/)
+  let paragraph = []
+  let list = null
+  let codeLines = []
+  let inCode = false
+
+  const flushParagraph = () => {
+    if (paragraph.length === 0) {
+      return
+    }
+    const node = document.createElement('p')
+    node.innerHTML = escapeHtml(paragraph.join(' '))
+    preview.append(node)
+    paragraph = []
+  }
+  const flushList = () => {
+    if (!list) {
+      return
+    }
+    preview.append(list)
+    list = null
+  }
+  const flushCode = () => {
+    const pre = document.createElement('pre')
+    const code = document.createElement('code')
+    code.innerHTML = escapeHtml(codeLines.join('\n'))
+    pre.append(code)
+    preview.append(pre)
+    codeLines = []
+  }
+
+  for (const line of lines) {
+    if (line.startsWith('```')) {
+      if (inCode) {
+        flushCode()
+        inCode = false
+      } else {
+        flushParagraph()
+        flushList()
+        inCode = true
+        codeLines = []
+      }
+      continue
+    }
+    if (inCode) {
+      codeLines.push(line)
+      continue
+    }
+    if (line.trim() === '') {
+      flushParagraph()
+      flushList()
+      continue
+    }
+    if (line.startsWith('### ')) {
+      flushParagraph()
+      flushList()
+      const heading = document.createElement('h3')
+      heading.innerHTML = escapeHtml(line.slice(4))
+      preview.append(heading)
+      continue
+    }
+    if (line.startsWith('## ')) {
+      flushParagraph()
+      flushList()
+      const heading = document.createElement('h2')
+      heading.innerHTML = escapeHtml(line.slice(3))
+      preview.append(heading)
+      continue
+    }
+    if (line.startsWith('# ')) {
+      flushParagraph()
+      flushList()
+      const heading = document.createElement('h1')
+      heading.innerHTML = escapeHtml(line.slice(2))
+      preview.append(heading)
+      continue
+    }
+    if (line.startsWith('- ')) {
+      flushParagraph()
+      if (!list) {
+        list = document.createElement('ul')
+      }
+      const item = document.createElement('li')
+      item.innerHTML = escapeHtml(line.slice(2))
+      list.append(item)
+      continue
+    }
+    flushList()
+    paragraph.push(line.trim())
+  }
+
+  if (inCode) {
+    flushCode()
+  }
+  flushParagraph()
+  flushList()
+  return preview
 }
 
 function renderTool(tool) {
@@ -463,6 +739,7 @@ function renderNote(text) {
 }
 
 function setSending(isSending) {
+  state.isSending = isSending
   if (sendButton) {
     sendButton.disabled = isSending
     sendButton.textContent = isSending ? 'Running' : 'Send'
@@ -478,6 +755,7 @@ function setSending(isSending) {
   }
   appShell?.classList.toggle('run-active', isSending)
   renderSessionList()
+  renderWorkspacePanel()
 }
 
 function autoResizePromptInput() {
@@ -509,4 +787,13 @@ function formatSessionTime(value) {
 
 function clamp(value, min, max) {
   return Math.min(Math.max(value, min), max)
+}
+
+function escapeHtml(value) {
+  return String(value)
+    .replaceAll('&', '&amp;')
+    .replaceAll('<', '&lt;')
+    .replaceAll('>', '&gt;')
+    .replaceAll('"', '&quot;')
+    .replaceAll("'", '&#39;')
 }
