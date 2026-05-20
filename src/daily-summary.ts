@@ -53,10 +53,10 @@ const genericSummaries = new Set([
 ])
 
 const genericSummaryPatterns = [
-  /^the user asked (?:a |an )?.*(?:question|task)\.$/i,
+  /^the user asked (?:a |an )?.*(?:question|task|follow[- ]?up)\.$/i,
   /^the user provided .*context.*\.$/i,
-  /^(follow-up|context):\s*the user (?:asked|provided)\b/i,
-  /^follow-up:\s*follow up with the user\.$/i,
+  /^(follow[- ]?up|context):\s*the user (?:asked|provided)\b/i,
+  /^follow[- ]?up:\s*follow up with the user\.$/i,
   /^context:\s*project context was provided\.$/i
 ]
 
