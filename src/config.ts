@@ -21,6 +21,7 @@ export interface AppConfig {
   userCcLocalDir: string
   dailyCompactThreshold: number
   dailyLoadLines: number
+  dailySummaryMaxLength: number
   memoryMaxLines: number
   memoryMaxLineLength: number
   readMaxInlineLines: number
@@ -52,6 +53,7 @@ export function createDefaultConfig(cwd: string): AppConfig {
     userCcLocalDir: join(homedir(), '.cc-local'),
     dailyCompactThreshold: 500,
     dailyLoadLines: 200,
+    dailySummaryMaxLength: 400,
     memoryMaxLines: 200,
     memoryMaxLineLength: 150,
     readMaxInlineLines: 500,
