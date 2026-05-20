@@ -57,6 +57,7 @@ const markdownRequests = {
 
 void loadWorkspaces()
 void loadSessions()
+updateChatLayoutState()
 
 composer?.addEventListener('submit', (event) => {
   event.preventDefault()
@@ -89,7 +90,7 @@ workspaceChangeButton?.addEventListener('click', () => {
 })
 
 function resetChat() {
-  if (state.activeRun) {
+  if (isRunLocked()) {
     return
   }
   state.sessionId = null
@@ -98,6 +99,7 @@ function resetChat() {
   updateChatTitle('Untitled session')
   updateRunStatus('Ready')
   setSending(false)
+  updateChatLayoutState()
   renderEmptyState()
   renderInspector()
   renderSessionList()
@@ -158,6 +160,7 @@ async function sendPrompt() {
     promptInput.value = ''
     autoResizePromptInput()
   }
+  updateChatLayoutState()
   setSending(true)
   updateRunStatus('Starting run...')
 
@@ -248,6 +251,7 @@ function finishRun(stream) {
   if (!stream || state.activeRun === stream) {
     state.activeRun = null
     setSending(false)
+    updateChatLayoutState()
     void loadSessions()
   }
 }
@@ -476,11 +480,37 @@ async function loadMarkdownFile(fileId) {
 }
 
 function isWorkspaceLocked() {
+  return isRunLocked()
+}
+
+function isRunLocked() {
   return isWorkspaceLockedState(state)
 }
 
+function isFreshChat() {
+  return state.messages.length === 0 && state.activeRun === null && !state.isSending
+}
+
+function updateChatLayoutState() {
+  appShell?.classList.toggle('chat-not-started', isFreshChat())
+}
+
+function getCurrentWorkspace() {
+  return state.workspaces.find((workspace) => workspace.id === state.workspaceId)
+}
+
+function formatWorkspaceDisplayName(workspace) {
+  if (!workspace) {
+    return state.workspaceError || 'Workspace'
+  }
+  if (workspace.id === '') {
+    return 'workspace'
+  }
+  return workspace.id
+}
+
 async function loadSession(sessionId) {
-  if (state.activeRun || sessionId === state.sessionId) {
+  if (isRunLocked() || sessionId === state.sessionId) {
     return
   }
   const response = await fetch(`/api/sessions/${encodeURIComponent(sessionId)}`)
@@ -490,6 +520,7 @@ async function loadSession(sessionId) {
   const body = await response.json()
   state.sessionId = body.session.id
   state.messages = Array.isArray(body.messages) ? body.messages : []
+  updateChatLayoutState()
   state.tools = []
   updateChatTitle(body.session.title || 'Untitled session')
   updateRunStatus('Ready')
@@ -512,12 +543,13 @@ function renderSessionList() {
     return
   }
 
+  const sessionLocked = isRunLocked()
   for (const session of state.sessions) {
     const button = document.createElement('button')
     button.className = 'session-row'
     button.type = 'button'
     button.classList.toggle('is-active', session.id === state.sessionId)
-    button.disabled = state.activeRun !== null
+    button.disabled = sessionLocked
     button.addEventListener('click', () => {
       void loadSession(session.id)
     })
@@ -537,12 +569,16 @@ function renderSessionList() {
 
 function renderWorkspacePanel() {
   const workspaceLocked = isWorkspaceLocked()
+  const current = getCurrentWorkspace()
+  const displayName = formatWorkspaceDisplayName(current)
   if (workspaceCurrent) {
-    const current = state.workspaces.find((workspace) => workspace.id === state.workspaceId)
-    workspaceCurrent.textContent = state.workspaceError || current?.label || 'Workspace'
+    workspaceCurrent.textContent = displayName
   }
   if (workspaceChangeButton) {
     workspaceChangeButton.disabled = workspaceLocked || state.workspaces.length === 0
+    workspaceChangeButton.textContent = displayName
+    workspaceChangeButton.title = current ? current.label : displayName
+    workspaceChangeButton.setAttribute('aria-label', `Select workspace, current: ${displayName}`)
     workspaceChangeButton.setAttribute('aria-expanded', String(workspacePicker?.hidden === false))
   }
   if (!workspacePicker) {
@@ -556,7 +592,8 @@ function renderWorkspacePanel() {
     button.className = 'workspace-option'
     button.classList.toggle('is-active', workspace.id === state.workspaceId)
     button.disabled = workspaceLocked
-    button.textContent = workspace.label
+    button.textContent = formatWorkspaceDisplayName(workspace)
+    button.title = workspace.label
     button.addEventListener('click', () => {
       if (isWorkspaceLocked()) {
         return
@@ -577,11 +614,13 @@ function renderMessages() {
   messages?.replaceChildren()
   if (state.messages.length === 0) {
     renderEmptyState()
+    updateChatLayoutState()
     return
   }
   for (const message of state.messages) {
     appendMessage(message.role, message.content)
   }
+  updateChatLayoutState()
 }
 
 function updateChatTitle(title) {
@@ -735,6 +774,7 @@ function setSending(isSending) {
     railNewChatButton.disabled = isSending || state.activeRun !== null
   }
   appShell?.classList.toggle('run-active', isSending)
+  updateChatLayoutState()
   renderSessionList()
   renderWorkspacePanel()
 }
