@@ -52,6 +52,7 @@ export interface RunAgentLoopResult {
 
 export async function runAgentLoop(input: RunAgentLoopInput): Promise<RunAgentLoopResult> {
   const messages = input.messages ?? buildInitialMessages(input.systemPrompt, input.userPrompt)
+  const dailySummaryUserPrompt = getCurrentUserPrompt(input)
   const callModel = input.callModel ?? defaultCallModel
   const observer = input.observer
   const context: ToolContext = input.toolContext ?? {
@@ -135,7 +136,7 @@ export async function runAgentLoop(input: RunAgentLoopInput): Promise<RunAgentLo
 
       messages.push({ role: 'assistant', content: response.content })
       notifyObserver(() => observer?.onResponse(response.content))
-      await appendDailySummaryAfterFinal(input, messages, response.content, callModel)
+      await appendDailySummaryAfterFinal(input, dailySummaryUserPrompt, response.content, callModel)
       return { finalText: response.content, toolCallCount }
     }
 
@@ -206,11 +207,10 @@ export async function runAgentLoop(input: RunAgentLoopInput): Promise<RunAgentLo
 
 async function appendDailySummaryAfterFinal(
   input: RunAgentLoopInput,
-  messages: ChatMessage[],
+  userPrompt: string | undefined,
   finalText: string,
   callModel: (input: CallModelInput) => Promise<ModelResponse>
 ): Promise<void> {
-  const userPrompt = getCurrentUserPrompt(input, messages)
   if (userPrompt === undefined) {
     return
   }
@@ -228,13 +228,13 @@ async function appendDailySummaryAfterFinal(
   }
 }
 
-function getCurrentUserPrompt(input: RunAgentLoopInput, messages: ChatMessage[]): string | undefined {
+function getCurrentUserPrompt(input: RunAgentLoopInput): string | undefined {
   if ('userPrompt' in input && input.userPrompt !== undefined) {
     return input.userPrompt
   }
 
-  for (let index = messages.length - 1; index >= 0; index -= 1) {
-    const message = messages[index]
+  for (let index = input.messages.length - 1; index >= 0; index -= 1) {
+    const message = input.messages[index]
     if (message?.role === 'user') {
       return message.content
     }

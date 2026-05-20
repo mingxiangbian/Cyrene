@@ -230,6 +230,39 @@ describe('runAgentLoop', () => {
     expect(summaryInputs).toEqual([{ userPrompt: 'latest request', finalText: 'latest final answer' }])
   })
 
+  it('summarizes session-style runs with the latest real user message after an empty-response retry', async () => {
+    const config = createDefaultConfig('/tmp/project')
+    const messages: ChatMessage[] = [
+      { role: 'system', content: 'system' },
+      { role: 'user', content: 'original request' }
+    ]
+    const summaryInputs: Array<{ userPrompt: string; finalText: string }> = []
+    let calls = 0
+
+    const result = await runAgentLoop({
+      config,
+      messages,
+      tools: [],
+      dailySummary: {
+        maybeAppendDailySummary: async ({ userPrompt, finalText }) => {
+          summaryInputs.push({ userPrompt, finalText })
+          return true
+        }
+      },
+      callModel: async (): Promise<ModelResponse> => {
+        calls += 1
+        if (calls === 1) {
+          return { content: '\n\n', toolCalls: [] }
+        }
+
+        return { content: 'final after retry', toolCalls: [] }
+      }
+    })
+
+    expect(result.finalText).toBe('final after retry')
+    expect(summaryInputs).toEqual([{ userPrompt: 'original request', finalText: 'final after retry' }])
+  })
+
   it('snips messages before model calls while preserving the caller message array', async () => {
     const config = createDefaultConfig('/tmp/project')
     config.contextWindowTokens = 10
