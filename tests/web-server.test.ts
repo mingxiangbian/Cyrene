@@ -55,6 +55,8 @@ describe('startWebServer', () => {
     expect(body).toContain('id="workspacePanel"')
     expect(body).toContain('id="workspaceCurrent"')
     expect(body).toContain('id="workspaceChangeButton"')
+    expect(body).toContain('aria-label="Select workspace"')
+    expect(body).toContain('aria-controls="workspacePicker"')
     expect(body).toContain('id="workspacePicker"')
     expect(body).toContain('id="inspectorEdgeToggle"')
     expect(body).toContain('class="chat-actions"')
@@ -81,6 +83,7 @@ describe('startWebServer', () => {
     expect(body).not.toContain('href="#tools"')
     expect(body).not.toContain('href="#chat">Console</a>')
     expect(body).not.toContain('aria-label="Console"')
+    expect(body).not.toContain('>Change</button>')
   })
 
   it('serves the Prism visual system from GET /static/styles.css', async () => {
