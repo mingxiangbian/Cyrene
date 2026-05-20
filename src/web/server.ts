@@ -290,7 +290,11 @@ async function runWebAgent(
       config: runtime.config,
       tools: runtime.tools,
       messages: [{ role: 'system', content: runtime.systemPrompt }, ...record.messages],
-      observer: createWebObserver((event) => emit(record, event)),
+      observer: createWebObserver((event) => {
+        if (event.type !== 'final') {
+          emit(record, event)
+        }
+      }),
       callModel
     })
     await appendSessionEvent({
@@ -298,6 +302,7 @@ async function runWebAgent(
       sessionId: record.sessionId,
       event: { type: 'message', message: { role: 'assistant', content: result.finalText } }
     })
+    emit(record, { type: 'final', text: result.finalText })
     try {
       await (compactDailyIfNeeded ?? defaultCompactDailyIfNeeded)({
         cwd: runtime.config.cwd,

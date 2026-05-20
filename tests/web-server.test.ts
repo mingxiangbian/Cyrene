@@ -573,6 +573,91 @@ describe('startWebServer', () => {
     ])
   })
 
+  it('persists the assistant response before streaming final for immediate session resume', async () => {
+    const cwd = await createTempCwd()
+    let releaseFirstAssistantPersistence!: () => void
+    let markFirstAssistantPersistenceStarted!: () => void
+    const firstAssistantPersistence = new Promise<void>((resolve) => {
+      releaseFirstAssistantPersistence = resolve
+    })
+    const firstAssistantPersistenceStarted = new Promise<void>((resolve) => {
+      markFirstAssistantPersistenceStarted = resolve
+    })
+
+    vi.resetModules()
+    vi.doMock('../src/session-store.js', async (importOriginal) => {
+      const actual = await importOriginal<typeof import('../src/session-store.js')>()
+      return {
+        ...actual,
+        appendSessionEvent: vi.fn(async (input: Parameters<typeof actual.appendSessionEvent>[0]) => {
+          if (input.event.type === 'message' && input.event.message.role === 'assistant' && input.event.message.content === 'first answer') {
+            markFirstAssistantPersistenceStarted()
+            await firstAssistantPersistence
+          }
+          await actual.appendSessionEvent(input)
+        })
+      }
+    })
+
+    let isolatedServer: WebServerHandle | undefined
+    try {
+      const modelMessages: CallModelInput['messages'][] = []
+      const callModel = vi.fn(async (input: CallModelInput): Promise<ModelResponse> => {
+        modelMessages.push(input.messages.map((message) => ({ ...message })))
+        return { content: callModel.mock.calls.length === 1 ? 'first answer' : 'second answer', toolCalls: [] }
+      })
+      const { startWebServer: startIsolatedWebServer } = await import('../src/web/server.js')
+      isolatedServer = await startIsolatedWebServer({
+        cwd,
+        host: '127.0.0.1',
+        port: 0,
+        callModel
+      })
+      servers.push(isolatedServer)
+
+      const firstCreateResponse = await fetch(`${isolatedServer.url}/api/runs`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ message: 'first question' })
+      })
+      expect(firstCreateResponse.status).toBe(202)
+      const firstCreateBody = (await firstCreateResponse.json()) as { runId: string; sessionId: string }
+      await firstAssistantPersistenceStarted
+      const firstStreamPromise = readRunEventStream(`${isolatedServer.url}/api/runs/${firstCreateBody.runId}/events`)
+      const streamedFinalBeforePersistence = await Promise.race([
+        firstStreamPromise.then(() => true),
+        new Promise<boolean>((resolve) => setTimeout(() => resolve(false), 20))
+      ])
+      if (!streamedFinalBeforePersistence) {
+        releaseFirstAssistantPersistence()
+      }
+      const firstStream = await firstStreamPromise
+      expect(firstStream.body).toContain('"type":"final","text":"first answer"')
+
+      const secondCreateResponse = await fetch(`${isolatedServer.url}/api/runs`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          sessionId: firstCreateBody.sessionId,
+          message: 'second question'
+        })
+      })
+      expect(secondCreateResponse.status).toBe(202)
+      const secondCreateBody = (await secondCreateResponse.json()) as { runId: string }
+      await readRunEventStream(`${isolatedServer.url}/api/runs/${secondCreateBody.runId}/events`)
+
+      expect(modelMessages[1].slice(1)).toEqual([
+        { role: 'user', content: 'first question' },
+        { role: 'assistant', content: 'first answer' },
+        { role: 'user', content: 'second question' }
+      ])
+    } finally {
+      releaseFirstAssistantPersistence()
+      vi.doUnmock('../src/session-store.js')
+      vi.resetModules()
+    }
+  })
+
   it('persists Web sessions and reloads them for a later server instance', async () => {
     const cwd = await createTempCwd()
     const firstCallModel = vi.fn(async (): Promise<ModelResponse> => ({ content: 'first answer', toolCalls: [] }))
