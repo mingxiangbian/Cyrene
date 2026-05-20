@@ -8,6 +8,7 @@ coverage/
 .worktrees/
 .superpowers/
 data/
+workspace/
 
 # Local model weights and downloaded model artifacts
 Qwen3.5-9B-MLX-4bit/
