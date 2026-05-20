@@ -7,6 +7,13 @@ import { randomUUID } from 'node:crypto'
 import { fileURLToPath } from 'node:url'
 import { runAgentLoop } from '../agent-loop.js'
 import type { CallModelInput, ChatMessage, ChatRole, ModelResponse } from '../llm-client.js'
+import {
+  appendSessionEvent,
+  createSession,
+  listSessions,
+  loadSession,
+  type SessionIndexItem
+} from '../session-store.js'
 import { buildAgentRuntime } from './prompt-context.js'
 import { createWebObserver, errorEvent, type WebRunEvent } from './web-observer.js'
 
@@ -24,7 +31,8 @@ export interface WebServerHandle {
 
 interface RunRecord {
   id: string
-  session: SessionRecord
+  cwd: string
+  sessionId: string
   userMessage: ChatMessage
   messages: ChatMessage[]
   events: WebRunEvent[]
@@ -32,15 +40,10 @@ interface RunRecord {
   done: boolean
 }
 
-interface SessionRecord {
-  id: string
-  messages: ChatMessage[]
-}
-
 interface WebServerContext {
+  cwd: string
   callModel?: (input: CallModelInput) => Promise<ModelResponse>
   runs: Map<string, RunRecord>
-  sessions: Map<string, SessionRecord>
   activeRuns: Set<Promise<void>>
   runtime: Awaited<ReturnType<typeof buildAgentRuntime>>
 }
@@ -51,16 +54,21 @@ const staticDir = resolve(dirname(currentFile), 'static')
 export async function startWebServer(input: StartWebServerInput): Promise<WebServerHandle> {
   const runtime = await buildAgentRuntime(input.cwd)
   const runs = new Map<string, RunRecord>()
-  const sessions = new Map<string, SessionRecord>()
   const activeRuns = new Set<Promise<void>>()
 
   const server = createServer((request, response) => {
     void routeRequest(request, response, {
       activeRuns,
       callModel: input.callModel,
+      cwd: input.cwd,
       runs,
-      sessions,
       runtime
+    }).catch((error: unknown) => {
+      if (!response.headersSent) {
+        writeJson(response, 500, { error: error instanceof Error ? error.message : String(error) })
+      } else {
+        response.end()
+      }
     })
   })
 
@@ -122,6 +130,17 @@ async function routeRequest(
     return
   }
 
+  if (request.method === 'GET' && url.pathname === '/api/sessions') {
+    await getSessions(response, context)
+    return
+  }
+
+  const sessionMatch = /^\/api\/sessions\/([^/]+)$/.exec(url.pathname)
+  if (request.method === 'GET' && sessionMatch !== null) {
+    await getSession(response, context, decodeURIComponent(sessionMatch[1]))
+    return
+  }
+
   const eventMatch = /^\/api\/runs\/([^/]+)\/events$/.exec(url.pathname)
   if (request.method === 'GET' && eventMatch !== null) {
     streamRunEvents(request, response, context.runs, eventMatch[1])
@@ -156,11 +175,47 @@ async function createRun(
     return
   }
 
-  const session = getOrCreateSession(context.sessions, parsed.sessionId)
-  const messages = [...session.messages, userMessage]
+  let session: SessionIndexItem
+  let messages: ChatMessage[]
+  try {
+    if (parsed.sessionId === undefined) {
+      session = await createSession({
+        cwd: context.cwd,
+        mode: 'web',
+        model: context.runtime.config.model.model,
+        firstUserMessage: userMessage
+      })
+      messages = [userMessage]
+    } else {
+      const loaded = await loadSession({
+        cwd: context.cwd,
+        sessionId: parsed.sessionId,
+        recentMessages: context.runtime.config.sessionResumeRecentMessages
+      })
+      if (loaded === null) {
+        writeJson(response, 404, { error: 'Session not found.' })
+        return
+      }
+      await appendSessionEvent({
+        cwd: context.cwd,
+        sessionId: loaded.session.id,
+        event: { type: 'message', message: userMessage }
+      })
+      session = loaded.session
+      messages = [...loaded.modelMessages, userMessage]
+    }
+  } catch (error) {
+    if (isUnsafeSessionError(error)) {
+      writeJson(response, 400, { error: 'Invalid session id.' })
+      return
+    }
+    throw error
+  }
+
   const record: RunRecord = {
     id: randomUUID(),
-    session,
+    cwd: context.cwd,
+    sessionId: session.id,
     userMessage,
     messages,
     events: [],
@@ -168,7 +223,7 @@ async function createRun(
     done: false
   }
   context.runs.set(record.id, record)
-  writeJson(response, 202, { runId: record.id, sessionId: session.id })
+  writeJson(response, 202, { runId: record.id, sessionId: record.sessionId })
 
   const runPromise = Promise.resolve()
     .then(() => runWebAgent(record, context.runtime, context.callModel))
@@ -191,10 +246,52 @@ async function runWebAgent(
       observer: createWebObserver((event) => emit(record, event)),
       callModel
     })
-    record.session.messages.push(record.userMessage, { role: 'assistant', content: result.finalText })
+    await appendSessionEvent({
+      cwd: record.cwd,
+      sessionId: record.sessionId,
+      event: { type: 'message', message: { role: 'assistant', content: result.finalText } }
+    })
   } catch (error) {
+    await appendSessionEvent({
+      cwd: record.cwd,
+      sessionId: record.sessionId,
+      event: {
+        type: 'error',
+        message: error instanceof Error ? error.message : String(error)
+      }
+    }).catch(() => {})
     emit(record, errorEvent(error))
   }
+}
+
+async function getSessions(response: ServerResponse, context: WebServerContext): Promise<void> {
+  writeJson(response, 200, { sessions: await listSessions(context.cwd) })
+}
+
+async function getSession(response: ServerResponse, context: WebServerContext, sessionId: string): Promise<void> {
+  let loaded: Awaited<ReturnType<typeof loadSession>>
+  try {
+    loaded = await loadSession({
+      cwd: context.cwd,
+      sessionId,
+      recentMessages: context.runtime.config.sessionResumeRecentMessages
+    })
+  } catch (error) {
+    if (isUnsafeSessionError(error)) {
+      writeJson(response, 400, { error: 'Invalid session id.' })
+      return
+    }
+    throw error
+  }
+  if (loaded === null) {
+    writeJson(response, 404, { error: 'Session not found.' })
+    return
+  }
+
+  writeJson(response, 200, {
+    session: loaded.session,
+    messages: loaded.messages
+  })
 }
 
 function emit(record: RunRecord, event: WebRunEvent): void {
@@ -299,22 +396,6 @@ function parseRunRequest(body: unknown): { ok: true; message: ChatMessage; sessi
   return { ok: false, error: 'At least one user message is required.' }
 }
 
-function getOrCreateSession(sessions: Map<string, SessionRecord>, requestedSessionId?: string): SessionRecord {
-  if (requestedSessionId !== undefined) {
-    const existing = sessions.get(requestedSessionId)
-    if (existing !== undefined) {
-      return existing
-    }
-  }
-
-  const session: SessionRecord = {
-    id: randomUUID(),
-    messages: []
-  }
-  sessions.set(session.id, session)
-  return session
-}
-
 async function serveStaticFile(response: ServerResponse, relativePath: string): Promise<void> {
   const normalizedPath = normalize(relativePath).replace(/^(\.\.(\/|\\|$))+/, '')
   const filePath = resolve(staticDir, normalizedPath)
@@ -365,4 +446,8 @@ function writeJson(response: ServerResponse, status: number, body: unknown): voi
 
 function isObject(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null
+}
+
+function isUnsafeSessionError(error: unknown): boolean {
+  return error instanceof Error && error.message.startsWith('Unsafe session id:')
 }

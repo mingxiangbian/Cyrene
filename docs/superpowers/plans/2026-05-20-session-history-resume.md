@@ -47,7 +47,7 @@
 - Modify: `src/config.ts`
 - Modify: `tests/config.test.ts`
 
-- [ ] **Step 1: Add failing config expectation**
+- [x] **Step 1: Add failing config expectation**
 
 In `tests/config.test.ts`, add:
 
@@ -55,7 +55,7 @@ In `tests/config.test.ts`, add:
 expect(config.sessionResumeRecentMessages).toBe(40)
 ```
 
-- [ ] **Step 2: Run focused test**
+- [x] **Step 2: Run focused test**
 
 ```bash
 npx vitest run tests/config.test.ts
@@ -63,7 +63,7 @@ npx vitest run tests/config.test.ts
 
 Expected: fails because the config field does not exist.
 
-- [ ] **Step 3: Add config field**
+- [x] **Step 3: Add config field**
 
 In `AppConfig`:
 
@@ -77,7 +77,7 @@ In `createDefaultConfig()`:
 sessionResumeRecentMessages: 40,
 ```
 
-- [ ] **Step 4: Verify**
+- [x] **Step 4: Verify**
 
 ```bash
 npx vitest run tests/config.test.ts
@@ -93,7 +93,7 @@ Expected: pass.
 - Create: `src/session-store.ts`
 - Create: `tests/session-store.test.ts`
 
-- [ ] **Step 1: Write failing store tests**
+- [x] **Step 1: Write failing store tests**
 
 Cover:
 
@@ -108,7 +108,7 @@ Cover:
 - malformed JSONL lines are skipped.
 - traversal ids and symlink files are rejected or ignored.
 
-- [ ] **Step 2: Run failing tests**
+- [x] **Step 2: Run failing tests**
 
 ```bash
 npx vitest run tests/session-store.test.ts
@@ -116,7 +116,7 @@ npx vitest run tests/session-store.test.ts
 
 Expected: fails because `src/session-store.ts` does not exist.
 
-- [ ] **Step 3: Implement store types and helpers**
+- [x] **Step 3: Implement store types and helpers**
 
 Implement:
 
@@ -135,7 +135,7 @@ Safety helpers:
 - validate id with a strict regex such as `/^[A-Za-z0-9_-]+$/`.
 - use `O_NOFOLLOW` for append paths where practical.
 
-- [ ] **Step 4: Implement create/list/load/append**
+- [x] **Step 4: Implement create/list/load/append**
 
 Suggested exported functions:
 
@@ -164,7 +164,7 @@ loadSession(input: {
 }): Promise<LoadedSession | null>
 ```
 
-- [ ] **Step 5: Verify**
+- [x] **Step 5: Verify**
 
 ```bash
 npx vitest run tests/session-store.test.ts
@@ -180,7 +180,7 @@ Expected: pass.
 - Modify: `src/web/server.ts`
 - Modify: `tests/web-server.test.ts`
 
-- [ ] **Step 1: Add failing API tests**
+- [x] **Step 1: Add failing API tests**
 
 Add tests for:
 
@@ -189,7 +189,7 @@ Add tests for:
 - unknown session id returns 404.
 - traversal-shaped id returns 404 or 400 without file access.
 
-- [ ] **Step 2: Run failing tests**
+- [x] **Step 2: Run failing tests**
 
 ```bash
 npx vitest run tests/web-server.test.ts
@@ -197,7 +197,7 @@ npx vitest run tests/web-server.test.ts
 
 Expected: fails because routes do not exist.
 
-- [ ] **Step 3: Add routes**
+- [x] **Step 3: Add routes**
 
 In `routeRequest()`:
 
@@ -208,7 +208,7 @@ GET /api/sessions/:id
 
 Use `session-store` functions only; do not duplicate file IO in server.
 
-- [ ] **Step 4: Verify**
+- [x] **Step 4: Verify**
 
 ```bash
 npx vitest run tests/web-server.test.ts tests/session-store.test.ts
@@ -224,7 +224,7 @@ Expected: pass.
 - Modify: `src/web/server.ts`
 - Modify: `tests/web-server.test.ts`
 
-- [ ] **Step 1: Add failing persistence tests**
+- [x] **Step 1: Add failing persistence tests**
 
 Cover:
 
@@ -235,13 +235,13 @@ Cover:
 - model receives current system prompt plus stored recent messages plus current user message.
 - failed run appends an `error` event.
 
-- [ ] **Step 2: Run failing tests**
+- [x] **Step 2: Run failing tests**
 
 ```bash
 npx vitest run tests/web-server.test.ts
 ```
 
-- [ ] **Step 3: Replace canonical in-memory session behavior**
+- [x] **Step 3: Replace canonical in-memory session behavior**
 
 Keep `runs` in memory for active SSE streams. Treat stored sessions as canonical:
 
@@ -253,7 +253,7 @@ Keep `runs` in memory for active SSE streams. Treat stored sessions as canonical
 6. Run agent.
 7. Append assistant event on success or error event on failure.
 
-- [ ] **Step 4: Verify**
+- [x] **Step 4: Verify**
 
 ```bash
 npx vitest run tests/web-server.test.ts tests/session-store.test.ts
@@ -271,7 +271,7 @@ Expected: pass.
 - Modify: `src/web/static/styles.css`
 - Modify: `tests/web-server.test.ts`
 
-- [ ] **Step 1: Add static contract tests**
+- [x] **Step 1: Add static contract tests**
 
 Assert HTML/JS/CSS contain stable hooks and behavior terms:
 
@@ -282,13 +282,13 @@ Assert HTML/JS/CSS contain stable hooks and behavior terms:
 - active session id state.
 - no visible rendering of raw session id.
 
-- [ ] **Step 2: Run failing tests**
+- [x] **Step 2: Run failing tests**
 
 ```bash
 npx vitest run tests/web-server.test.ts
 ```
 
-- [ ] **Step 3: Implement UI**
+- [x] **Step 3: Implement UI**
 
 Behavior:
 
@@ -298,7 +298,7 @@ Behavior:
 - Sending a prompt includes active `sessionId` when present.
 - After run creation/final, refresh the session list.
 
-- [ ] **Step 4: Verify**
+- [x] **Step 4: Verify**
 
 ```bash
 npx vitest run tests/web-server.test.ts
@@ -316,7 +316,7 @@ Expected: pass.
 - Modify: `tests/repl.test.ts`
 - Modify: `tests/main-cli.test.ts`
 
-- [ ] **Step 1: Add failing tests**
+- [x] **Step 1: Add failing tests**
 
 Cover:
 
@@ -325,13 +325,13 @@ Cover:
 - resumed REPL appends user and assistant events to the same session.
 - missing session id fails before entering the REPL loop.
 
-- [ ] **Step 2: Run failing tests**
+- [x] **Step 2: Run failing tests**
 
 ```bash
 npx vitest run tests/repl.test.ts tests/main-cli.test.ts
 ```
 
-- [ ] **Step 3: Implement CLI option**
+- [x] **Step 3: Implement CLI option**
 
 In `main.ts`:
 
@@ -345,7 +345,7 @@ Validation:
 - invalid with `--web`.
 - invalid with one-shot prompt.
 
-- [ ] **Step 4: Implement REPL resume plumbing**
+- [x] **Step 4: Implement REPL resume plumbing**
 
 `runRepl()` should accept optional loaded session data or a `sessionId` plus store dependency.
 
@@ -361,7 +361,7 @@ For each agent turn:
 - append assistant event after success.
 - append error event if the turn fails.
 
-- [ ] **Step 5: Verify**
+- [x] **Step 5: Verify**
 
 ```bash
 npx vitest run tests/repl.test.ts tests/main-cli.test.ts tests/session-store.test.ts
@@ -373,25 +373,25 @@ Expected: pass.
 
 ## Task 7: Full Verification
 
-- [ ] **Step 1: Focused tests**
+- [x] **Step 1: Focused tests**
 
 ```bash
 npx vitest run tests/session-store.test.ts tests/web-server.test.ts tests/repl.test.ts tests/main-cli.test.ts tests/config.test.ts
 ```
 
-- [ ] **Step 2: Typecheck**
+- [x] **Step 2: Typecheck**
 
 ```bash
 npm run typecheck
 ```
 
-- [ ] **Step 3: Full test suite**
+- [x] **Step 3: Full test suite**
 
 ```bash
 npm test
 ```
 
-- [ ] **Step 4: Scope review**
+- [x] **Step 4: Scope review**
 
 Check:
 
@@ -409,7 +409,7 @@ Confirm:
 - System prompt is not stored in JSONL.
 - Existing daily memory behavior is unchanged.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add docs/superpowers/plans/2026-05-20-session-history-resume.md \
