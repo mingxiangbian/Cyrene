@@ -102,12 +102,16 @@ export function parseDailySummaryResponse(content: string): DailySummaryResponse
 }
 
 export function validateDailySummary(summary: string, config: AppConfig): boolean {
+  if (/[\r\n]/.test(summary)) {
+    return false
+  }
+
   const normalized = summary.trim().replace(/\s+/g, ' ')
   if (normalized.length < 20 || normalized.length > config.dailySummaryMaxLength) {
     return false
   }
 
-  if (normalized.includes('\n') || genericSummaries.has(normalized.toLowerCase())) {
+  if (genericSummaries.has(normalized.toLowerCase())) {
     return false
   }
 

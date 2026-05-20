@@ -90,6 +90,12 @@ describe('daily summary filtering', () => {
     expect(validateDailySummary('Updated src/agent-loop.ts for memory behavior.', config)).toBe(false)
     expect(
       validateDailySummary(
+        'Decision: daily memory should store content summaries.\nFollow-up: keep filtering conservative.',
+        config
+      )
+    ).toBe(false)
+    expect(
+      validateDailySummary(
         'Decision: daily memory should skip ordinary tool calls and remember durable content summaries.',
         config
       )
