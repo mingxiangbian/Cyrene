@@ -1,3 +1,12 @@
+import {
+  buildRunRequestBody,
+  encodedWorkspaceId,
+  isWorkspaceLockedState,
+  ownsMarkdownFileResponse,
+  ownsMarkdownFilesResponse,
+  renderMarkdownHtml
+} from './app-helpers.js'
+
 const appShell = document.querySelector('.app-shell')
 const leftResizeHandle = document.querySelector('#leftResizeHandle')
 const messages = document.querySelector('#messages')
@@ -15,6 +24,9 @@ const inspectorContent = document.querySelector('#inspectorContent')
 const headerStatus = document.querySelector('#headerStatus')
 const chatHeading = document.querySelector('.chat-title h2')
 const sessionHistory = document.querySelector('#sessionHistory')
+const workspaceCurrent = document.querySelector('#workspaceCurrent')
+const workspaceChangeButton = document.querySelector('#workspaceChangeButton')
+const workspacePicker = document.querySelector('#workspacePicker')
 const tabs = Array.from(document.querySelectorAll('.tab'))
 
 const state = {
@@ -22,6 +34,14 @@ const state = {
   sessions: [],
   messages: [],
   activeRun: null,
+  isSending: false,
+  workspaces: [],
+  workspaceId: '',
+  markdownFiles: [],
+  selectedMarkdownId: '',
+  selectedMarkdownContent: '',
+  workspaceError: null,
+  markdownError: null,
   tools: [],
   resizingLeft: false,
   inspectorTab: 'tools',
@@ -30,6 +50,12 @@ const state = {
   runStatus: 'Ready'
 }
 
+const markdownRequests = {
+  files: 0,
+  file: 0
+}
+
+void loadWorkspaces()
 void loadSessions()
 
 composer?.addEventListener('submit', (event) => {
@@ -51,6 +77,16 @@ sidebarToggle?.addEventListener('click', () => setSidebarCollapsed(true))
 railSidebarToggle?.addEventListener('click', () => setSidebarCollapsed(false))
 inspectorEdgeToggle?.addEventListener('click', () => setInspectorOpen(true))
 inspectorClose?.addEventListener('click', () => setInspectorOpen(false))
+workspaceChangeButton?.addEventListener('click', () => {
+  if (isWorkspaceLocked()) {
+    return
+  }
+  const nextHidden = !workspacePicker?.hidden
+  if (workspacePicker) {
+    workspacePicker.hidden = nextHidden
+  }
+  workspaceChangeButton.setAttribute('aria-expanded', String(!nextHidden))
+})
 
 function resetChat() {
   if (state.activeRun) {
@@ -130,7 +166,11 @@ async function sendPrompt() {
     response = await fetch('/api/runs', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ sessionId: state.sessionId, message: content })
+      body: JSON.stringify(buildRunRequestBody({
+        sessionId: state.sessionId,
+        message: content,
+        workspaceId: state.workspaceId
+      }))
     })
   } catch (error) {
     finishWithError(error)
@@ -297,6 +337,148 @@ async function loadSessions() {
   }
 }
 
+async function loadWorkspaces() {
+  state.workspaceError = null
+  let response
+  try {
+    response = await fetch('/api/workspaces')
+  } catch {
+    state.workspaceError = 'Unable to load workspaces.'
+    renderWorkspacePanel()
+    return
+  }
+  if (!response.ok) {
+    state.workspaceError = 'Unable to load workspaces.'
+    renderWorkspacePanel()
+    return
+  }
+  const body = await response.json()
+  state.workspaces = Array.isArray(body.workspaces) ? body.workspaces : []
+  if (!state.workspaces.some((workspace) => workspace.id === state.workspaceId)) {
+    state.workspaceId = state.workspaces[0]?.id || ''
+  }
+  renderWorkspacePanel()
+  await loadMarkdownFiles()
+}
+
+async function loadMarkdownFiles() {
+  const requestWorkspaceId = state.workspaceId
+  const requestToken = ++markdownRequests.files
+  markdownRequests.file += 1
+  state.markdownError = null
+  state.markdownFiles = []
+  state.selectedMarkdownId = ''
+  state.selectedMarkdownContent = ''
+  renderInspector()
+
+  let response
+  try {
+    response = await fetch(`/api/workspaces/${encodedWorkspaceId(requestWorkspaceId)}/markdown`)
+  } catch {
+    if (!ownsMarkdownFilesResponse({
+      currentToken: markdownRequests.files,
+      responseToken: requestToken,
+      currentWorkspaceId: state.workspaceId,
+      responseWorkspaceId: requestWorkspaceId
+    })) {
+      return
+    }
+    state.markdownError = 'Unable to load Markdown context.'
+    renderInspector()
+    return
+  }
+  if (!ownsMarkdownFilesResponse({
+    currentToken: markdownRequests.files,
+    responseToken: requestToken,
+    currentWorkspaceId: state.workspaceId,
+    responseWorkspaceId: requestWorkspaceId
+  })) {
+    return
+  }
+  if (!response.ok) {
+    state.markdownError = 'Unable to load Markdown context.'
+    renderInspector()
+    return
+  }
+  const body = await response.json()
+  if (!ownsMarkdownFilesResponse({
+    currentToken: markdownRequests.files,
+    responseToken: requestToken,
+    currentWorkspaceId: state.workspaceId,
+    responseWorkspaceId: requestWorkspaceId
+  })) {
+    return
+  }
+  state.markdownFiles = Array.isArray(body.files) ? body.files : []
+  state.selectedMarkdownId = state.markdownFiles[0]?.id || ''
+  if (state.selectedMarkdownId) {
+    await loadMarkdownFile(state.selectedMarkdownId)
+    return
+  }
+  renderInspector()
+}
+
+async function loadMarkdownFile(fileId) {
+  const requestWorkspaceId = state.workspaceId
+  const requestFileId = fileId
+  const requestToken = ++markdownRequests.file
+  state.markdownError = null
+  state.selectedMarkdownId = fileId
+  state.selectedMarkdownContent = ''
+  renderInspector()
+
+  let response
+  try {
+    response = await fetch(`/api/workspaces/${encodedWorkspaceId(requestWorkspaceId)}/markdown/${encodeURIComponent(requestFileId)}`)
+  } catch {
+    if (!ownsMarkdownFileResponse({
+      currentToken: markdownRequests.file,
+      responseToken: requestToken,
+      currentWorkspaceId: state.workspaceId,
+      responseWorkspaceId: requestWorkspaceId,
+      currentFileId: state.selectedMarkdownId,
+      responseFileId: requestFileId
+    })) {
+      return
+    }
+    state.markdownError = 'Unable to load Markdown context.'
+    renderInspector()
+    return
+  }
+  if (!ownsMarkdownFileResponse({
+    currentToken: markdownRequests.file,
+    responseToken: requestToken,
+    currentWorkspaceId: state.workspaceId,
+    responseWorkspaceId: requestWorkspaceId,
+    currentFileId: state.selectedMarkdownId,
+    responseFileId: requestFileId
+  })) {
+    return
+  }
+  if (!response.ok) {
+    state.markdownError = 'Unable to load Markdown context.'
+    renderInspector()
+    return
+  }
+  const body = await response.json()
+  if (!ownsMarkdownFileResponse({
+    currentToken: markdownRequests.file,
+    responseToken: requestToken,
+    currentWorkspaceId: state.workspaceId,
+    responseWorkspaceId: requestWorkspaceId,
+    currentFileId: state.selectedMarkdownId,
+    responseFileId: requestFileId
+  })) {
+    return
+  }
+  state.selectedMarkdownContent = typeof body.file?.content === 'string' ? body.file.content : ''
+  renderInspector()
+}
+
+function isWorkspaceLocked() {
+  return isWorkspaceLockedState(state)
+}
+
 async function loadSession(sessionId) {
   if (state.activeRun || sessionId === state.sessionId) {
     return
@@ -350,6 +532,44 @@ function renderSessionList() {
 
     button.append(title, preview)
     sessionHistory.append(button)
+  }
+}
+
+function renderWorkspacePanel() {
+  const workspaceLocked = isWorkspaceLocked()
+  if (workspaceCurrent) {
+    const current = state.workspaces.find((workspace) => workspace.id === state.workspaceId)
+    workspaceCurrent.textContent = state.workspaceError || current?.label || 'Workspace'
+  }
+  if (workspaceChangeButton) {
+    workspaceChangeButton.disabled = workspaceLocked || state.workspaces.length === 0
+    workspaceChangeButton.setAttribute('aria-expanded', String(workspacePicker?.hidden === false))
+  }
+  if (!workspacePicker) {
+    return
+  }
+
+  workspacePicker.replaceChildren()
+  for (const workspace of state.workspaces) {
+    const button = document.createElement('button')
+    button.type = 'button'
+    button.className = 'workspace-option'
+    button.classList.toggle('is-active', workspace.id === state.workspaceId)
+    button.disabled = workspaceLocked
+    button.textContent = workspace.label
+    button.addEventListener('click', () => {
+      if (isWorkspaceLocked()) {
+        return
+      }
+      state.workspaceId = workspace.id
+      state.selectedMarkdownContent = ''
+      markdownRequests.file += 1
+      workspacePicker.hidden = true
+      workspaceChangeButton?.setAttribute('aria-expanded', 'false')
+      renderWorkspacePanel()
+      void loadMarkdownFiles()
+    })
+    workspacePicker.append(button)
   }
 }
 
@@ -418,7 +638,7 @@ function renderInspector() {
   }
 
   if (state.inspectorTab === 'context') {
-    inspectorContent.replaceChildren(renderNote(`${state.messages.length} client message${state.messages.length === 1 ? '' : 's'} in this page session.`))
+    inspectorContent.replaceChildren(renderContextPanel())
     return
   }
 
@@ -433,6 +653,43 @@ function renderInspector() {
   }
 
   inspectorContent.replaceChildren(...state.tools.map(renderTool))
+}
+
+function renderContextPanel() {
+  if (state.markdownError) {
+    return renderNote('Unable to load Markdown context.')
+  }
+  if (state.markdownFiles.length === 0) {
+    return renderNote('No Markdown files in this workspace.')
+  }
+
+  const panel = document.createElement('div')
+  panel.className = 'context-panel'
+
+  const select = document.createElement('select')
+  select.className = 'markdown-file-select'
+  select.value = state.selectedMarkdownId
+  select.addEventListener('change', () => {
+    void loadMarkdownFile(select.value)
+  })
+
+  for (const file of state.markdownFiles) {
+    const option = document.createElement('option')
+    option.value = file.id
+    option.textContent = file.label || file.id
+    option.selected = file.id === state.selectedMarkdownId
+    select.append(option)
+  }
+
+  panel.append(select, renderMarkdownPreview(state.selectedMarkdownContent))
+  return panel
+}
+
+function renderMarkdownPreview(markdown) {
+  const preview = document.createElement('div')
+  preview.className = 'markdown-preview'
+  preview.innerHTML = renderMarkdownHtml(markdown)
+  return preview
 }
 
 function renderTool(tool) {
@@ -463,6 +720,7 @@ function renderNote(text) {
 }
 
 function setSending(isSending) {
+  state.isSending = isSending
   if (sendButton) {
     sendButton.disabled = isSending
     sendButton.textContent = isSending ? 'Running' : 'Send'
@@ -478,6 +736,7 @@ function setSending(isSending) {
   }
   appShell?.classList.toggle('run-active', isSending)
   renderSessionList()
+  renderWorkspacePanel()
 }
 
 function autoResizePromptInput() {

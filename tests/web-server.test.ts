@@ -1,4 +1,4 @@
-import { mkdtemp, rm, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, realpath, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it, vi } from 'vitest'
@@ -52,6 +52,10 @@ describe('startWebServer', () => {
     expect(body).toContain('id="railNewChatButton"')
     expect(body).toContain('id="headerStatus"')
     expect(body).toContain('id="sessionHistory"')
+    expect(body).toContain('id="workspacePanel"')
+    expect(body).toContain('id="workspaceCurrent"')
+    expect(body).toContain('id="workspaceChangeButton"')
+    expect(body).toContain('id="workspacePicker"')
     expect(body).toContain('id="inspectorEdgeToggle"')
     expect(body).toContain('class="chat-actions"')
     expect(body).toContain('class="brand-avatar avatar-cartoon"')
@@ -95,6 +99,18 @@ describe('startWebServer', () => {
     expect(body).toContain('.inspector.is-open')
     expect(body).toContain('.app-shell.sidebar-collapsed')
     expect(body).toContain('.chat-actions')
+    expect(body).toContain('.workspace-panel')
+    expect(body).toContain('.workspace-current')
+    expect(body).toContain('.workspace-change-button')
+    expect(body).toContain('.workspace-picker')
+    expect(body).toContain('.workspace-option')
+    expect(body).toContain('.context-panel')
+    expect(body).toContain('.markdown-file-select')
+    expect(body).toContain('.markdown-preview')
+    expect(body).toContain('.markdown-preview h1')
+    expect(body).toContain('.markdown-preview pre')
+    expect(body).toContain('.markdown-preview code')
+    expect(body).toContain('.markdown-preview ul')
     expect(body).toContain('.inspector-edge-toggle')
     expect(body).toContain('.run-status-line')
     expect(body).toContain('.brand-avatar')
@@ -116,6 +132,9 @@ describe('startWebServer', () => {
     expect(body).toContain('@keyframes statusFlow')
     expect(body).toContain('linear-gradient(135deg, #e2eef9 0%, #f0f7ff 45%, #ffeaf6 100%)')
     expect(body).toContain('box-shadow: none')
+    expect(body).toMatch(/\.sidebar,\n\.chat-shell,\n\.inspector \{[\s\S]*box-shadow: none/)
+    expect(body).toMatch(/\.left-resize-handle \{[\s\S]*background: transparent/)
+    expect(body).toMatch(/body\.is-resizing-left \.left-resize-handle \{[\s\S]*background: linear-gradient/)
     expect(body).not.toContain('.sidebar-card')
     expect(body).not.toContain('.brand-avatar::after')
     expect(body).not.toContain('.avatar-cartoon::after')
@@ -131,6 +150,108 @@ describe('startWebServer', () => {
     expect(cartoonResponse.status).toBe(200)
     expect(cartoonResponse.headers.get('content-type')).toContain('image/png')
     expect((await cartoonResponse.arrayBuffer()).byteLength).toBeGreaterThan(1024)
+  })
+
+  it('lists the workspace root and direct child workspaces', async () => {
+    const cwd = await createTempCwd()
+    await mkdir(join(cwd, 'workspace', 'project-b'))
+    await mkdir(join(cwd, 'workspace', 'project-a'))
+    await writeFile(join(cwd, 'workspace', 'README.md'), '# Root\n')
+    const server = await startWebServer({
+      cwd,
+      host: '127.0.0.1',
+      port: 0,
+      callModel: async (): Promise<ModelResponse> => ({ content: 'unused', toolCalls: [] })
+    })
+    servers.push(server)
+
+    const response = await fetch(`${server.url}/api/workspaces`)
+
+    expect(response.status).toBe(200)
+    expect(await response.json()).toEqual({
+      workspaces: [
+        { id: '', label: 'workspace', relativePath: 'workspace' },
+        { id: 'project-a', label: 'workspace/project-a', relativePath: 'workspace/project-a' },
+        { id: 'project-b', label: 'workspace/project-b', relativePath: 'workspace/project-b' }
+      ]
+    })
+  })
+
+  it('returns 400 for GET /api/workspaces when workspace is missing', async () => {
+    const cwd = await createTempCwdWithoutWorkspace()
+    const server = await startWebServer({
+      cwd,
+      host: '127.0.0.1',
+      port: 0,
+      callModel: async (): Promise<ModelResponse> => ({ content: 'unused', toolCalls: [] })
+    })
+    servers.push(server)
+
+    const response = await fetch(`${server.url}/api/workspaces`)
+    const body = (await response.json()) as { error: string }
+
+    expect(response.status).toBe(400)
+    expect(body.error).toContain('workspace directory does not exist')
+  })
+
+  it('lists and reads Markdown for a selected child workspace', async () => {
+    const cwd = await createTempCwd()
+    await mkdir(join(cwd, 'workspace', 'project-a'))
+    await writeFile(join(cwd, 'workspace', 'project-a', 'README.md'), '# Project A\n')
+    await writeFile(join(cwd, 'workspace', 'project-a', 'notes.txt'), 'ignore me\n')
+    const server = await startWebServer({
+      cwd,
+      host: '127.0.0.1',
+      port: 0,
+      callModel: async (): Promise<ModelResponse> => ({ content: 'unused', toolCalls: [] })
+    })
+    servers.push(server)
+
+    const listResponse = await fetch(`${server.url}/api/workspaces/project-a/markdown`)
+    const readResponse = await fetch(`${server.url}/api/workspaces/project-a/markdown/README.md`)
+
+    expect(listResponse.status).toBe(200)
+    expect(await listResponse.json()).toEqual({ files: [{ id: 'README.md', label: 'README.md' }] })
+    expect(readResponse.status).toBe(200)
+    expect(await readResponse.json()).toEqual({ file: { id: 'README.md', content: '# Project A\n' } })
+  })
+
+  it('lists and reads Markdown for the @root workspace', async () => {
+    const cwd = await createTempCwd()
+    await writeFile(join(cwd, 'workspace', 'README.md'), '# Workspace Root\n')
+    const server = await startWebServer({
+      cwd,
+      host: '127.0.0.1',
+      port: 0,
+      callModel: async (): Promise<ModelResponse> => ({ content: 'unused', toolCalls: [] })
+    })
+    servers.push(server)
+
+    const listResponse = await fetch(`${server.url}/api/workspaces/@root/markdown`)
+    const readResponse = await fetch(`${server.url}/api/workspaces/@root/markdown/README.md`)
+
+    expect(listResponse.status).toBe(200)
+    expect(await listResponse.json()).toEqual({ files: [{ id: 'README.md', label: 'README.md' }] })
+    expect(readResponse.status).toBe(200)
+    expect(await readResponse.json()).toEqual({ file: { id: 'README.md', content: '# Workspace Root\n' } })
+  })
+
+  it('rejects Markdown path traversal', async () => {
+    const cwd = await createTempCwd()
+    await writeFile(join(cwd, 'README.md'), '# Repo Root\n')
+    const server = await startWebServer({
+      cwd,
+      host: '127.0.0.1',
+      port: 0,
+      callModel: async (): Promise<ModelResponse> => ({ content: 'unused', toolCalls: [] })
+    })
+    servers.push(server)
+
+    const response = await fetch(`${server.url}/api/workspaces/@root/markdown/..%2FREADME.md`)
+    const body = (await response.json()) as { error: string }
+
+    expect(response.status).toBe(400)
+    expect(body.error).toContain('Invalid Markdown file id')
   })
 
   it('serves refined Web UI interaction code from GET /static/app.js', async () => {
@@ -154,6 +275,16 @@ describe('startWebServer', () => {
     expect(body).toContain('appendAssistantMessage')
     expect(body).toContain('loadSessions')
     expect(body).toContain('/api/sessions')
+    expect(body).toContain('loadWorkspaces')
+    expect(body).toContain('/api/workspaces')
+    expect(body).toContain('workspaceId')
+    expect(body).toContain('isWorkspaceLocked')
+    expect(body).toContain('loadMarkdownFiles')
+    expect(body).toContain('renderMarkdownPreview')
+    expect(body).toContain("state.selectedMarkdownContent = ''\n  renderInspector()")
+    expect(body).toContain('app-helpers.js')
+    expect(body).toContain('renderMarkdownHtml')
+    expect(body).toContain('ownsMarkdownFileResponse')
     expect(body).toContain('session-history')
     expect(body).toContain('message-group assistant')
     expect(body).toContain('assistant-avatar avatar-cartoon')
@@ -164,6 +295,20 @@ describe('startWebServer', () => {
     expect(body).toContain('message-content')
     expect(body).toContain('Cyrene')
     expect(body).not.toContain('Ask Prism')
+  })
+
+  it('serves Web UI helper code from GET /static/app-helpers.js', async () => {
+    const server = await startServer()
+
+    const response = await fetch(`${server.url}/static/app-helpers.js`)
+    const body = await response.text()
+
+    expect(response.status).toBe(200)
+    expect(response.headers.get('content-type')).toContain('text/javascript')
+    expect(body).toContain('renderMarkdownHtml')
+    expect(body).toContain('escapeHtml')
+    expect(body).toContain('ownsMarkdownFilesResponse')
+    expect(body).toContain('buildRunRequestBody')
   })
 
   it('rejects run creation without a user message', async () => {
@@ -235,8 +380,8 @@ describe('startWebServer', () => {
 
     expect(compactDailyIfNeeded).toHaveBeenCalledTimes(1)
     expect(compactDailyIfNeeded).toHaveBeenCalledWith({
-      cwd,
-      config: expect.objectContaining({ cwd }),
+      cwd: join(cwd, 'workspace'),
+      config: expect.objectContaining({ cwd: join(cwd, 'workspace') }),
       callModel
     })
   })
@@ -289,7 +434,7 @@ describe('startWebServer', () => {
 
   it('streams tool events before the final response', async () => {
     const cwd = await createTempCwd()
-    await writeFile(join(cwd, 'package.json'), '{"name":"web-prism-console-test"}\n')
+    await writeFile(join(cwd, 'workspace', 'package.json'), '{"name":"web-prism-console-test"}\n')
     const callModel = vi.fn(async (): Promise<ModelResponse> => {
       if (callModel.mock.calls.length === 1) {
         return {
@@ -332,6 +477,72 @@ describe('startWebServer', () => {
     expect(streamBody.indexOf('"type":"tool_start"')).toBeLessThan(streamBody.indexOf('"type":"tool_result"'))
     expect(streamBody.indexOf('"type":"tool_result"')).toBeLessThan(streamBody.indexOf('"type":"final"'))
     expect(callModel).toHaveBeenCalledTimes(2)
+  })
+
+  it('uses the selected workspace as the Web agent tool cwd', async () => {
+    const cwd = await createTempCwd()
+    await mkdir(join(cwd, 'workspace', 'project-a'))
+    await writeFile(join(cwd, 'workspace', 'project-a', 'README.md'), '# Project A\n')
+    const modelMessages: CallModelInput['messages'][] = []
+    const callModel = vi.fn(async (input: CallModelInput): Promise<ModelResponse> => {
+      modelMessages.push(input.messages.map((message) => ({ ...message })))
+      if (callModel.mock.calls.length === 1) {
+        return {
+          content: '',
+          toolCalls: [{
+            id: 'call-read-readme',
+            type: 'function',
+            function: {
+              name: 'file_read',
+              arguments: JSON.stringify({ file_path: 'README.md' })
+            }
+          }]
+        }
+      }
+
+      return { content: 'read project readme', toolCalls: [] }
+    })
+    const server = await startWebServer({
+      cwd,
+      host: '127.0.0.1',
+      port: 0,
+      callModel
+    })
+    servers.push(server)
+
+    const createResponse = await fetch(`${server.url}/api/runs`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ message: 'read README', workspaceId: 'project-a' })
+    })
+    expect(createResponse.status).toBe(202)
+    const createBody = (await createResponse.json()) as { runId: string }
+
+    await readRunEventStream(`${server.url}/api/runs/${createBody.runId}/events`)
+
+    expect(callModel).toHaveBeenCalledTimes(2)
+    expect(modelMessages[1]).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        role: 'tool',
+        content: expect.stringContaining('# Project A')
+      })
+    ]))
+  })
+
+  it('rejects invalid run workspace ids without calling the model', async () => {
+    const callModel = vi.fn(async (): Promise<ModelResponse> => ({ content: 'unused', toolCalls: [] }))
+    const server = await startServer(callModel)
+
+    const response = await fetch(`${server.url}/api/runs`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ message: 'hello web', workspaceId: '..' })
+    })
+    const body = (await response.json()) as { error: string }
+
+    expect(response.status).toBe(400)
+    expect(body.error).toContain('Invalid workspace id')
+    expect(callModel).not.toHaveBeenCalled()
   })
 
   it('streams concise error events when run fails', async () => {
@@ -403,6 +614,91 @@ describe('startWebServer', () => {
       { role: 'assistant', content: 'web answer' },
       { role: 'user', content: 'next question' }
     ])
+  })
+
+  it('persists the assistant response before streaming final for immediate session resume', async () => {
+    const cwd = await createTempCwd()
+    let releaseFirstAssistantPersistence!: () => void
+    let markFirstAssistantPersistenceStarted!: () => void
+    const firstAssistantPersistence = new Promise<void>((resolve) => {
+      releaseFirstAssistantPersistence = resolve
+    })
+    const firstAssistantPersistenceStarted = new Promise<void>((resolve) => {
+      markFirstAssistantPersistenceStarted = resolve
+    })
+
+    vi.resetModules()
+    vi.doMock('../src/session-store.js', async (importOriginal) => {
+      const actual = await importOriginal<typeof import('../src/session-store.js')>()
+      return {
+        ...actual,
+        appendSessionEvent: vi.fn(async (input: Parameters<typeof actual.appendSessionEvent>[0]) => {
+          if (input.event.type === 'message' && input.event.message.role === 'assistant' && input.event.message.content === 'first answer') {
+            markFirstAssistantPersistenceStarted()
+            await firstAssistantPersistence
+          }
+          await actual.appendSessionEvent(input)
+        })
+      }
+    })
+
+    let isolatedServer: WebServerHandle | undefined
+    try {
+      const modelMessages: CallModelInput['messages'][] = []
+      const callModel = vi.fn(async (input: CallModelInput): Promise<ModelResponse> => {
+        modelMessages.push(input.messages.map((message) => ({ ...message })))
+        return { content: callModel.mock.calls.length === 1 ? 'first answer' : 'second answer', toolCalls: [] }
+      })
+      const { startWebServer: startIsolatedWebServer } = await import('../src/web/server.js')
+      isolatedServer = await startIsolatedWebServer({
+        cwd,
+        host: '127.0.0.1',
+        port: 0,
+        callModel
+      })
+      servers.push(isolatedServer)
+
+      const firstCreateResponse = await fetch(`${isolatedServer.url}/api/runs`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ message: 'first question' })
+      })
+      expect(firstCreateResponse.status).toBe(202)
+      const firstCreateBody = (await firstCreateResponse.json()) as { runId: string; sessionId: string }
+      await firstAssistantPersistenceStarted
+      const firstStreamPromise = readRunEventStream(`${isolatedServer.url}/api/runs/${firstCreateBody.runId}/events`)
+      const streamedFinalBeforePersistence = await Promise.race([
+        firstStreamPromise.then(() => true),
+        new Promise<boolean>((resolve) => setTimeout(() => resolve(false), 20))
+      ])
+      if (!streamedFinalBeforePersistence) {
+        releaseFirstAssistantPersistence()
+      }
+      const firstStream = await firstStreamPromise
+      expect(firstStream.body).toContain('"type":"final","text":"first answer"')
+
+      const secondCreateResponse = await fetch(`${isolatedServer.url}/api/runs`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          sessionId: firstCreateBody.sessionId,
+          message: 'second question'
+        })
+      })
+      expect(secondCreateResponse.status).toBe(202)
+      const secondCreateBody = (await secondCreateResponse.json()) as { runId: string }
+      await readRunEventStream(`${isolatedServer.url}/api/runs/${secondCreateBody.runId}/events`)
+
+      expect(modelMessages[1].slice(1)).toEqual([
+        { role: 'user', content: 'first question' },
+        { role: 'assistant', content: 'first answer' },
+        { role: 'user', content: 'second question' }
+      ])
+    } finally {
+      releaseFirstAssistantPersistence()
+      vi.doUnmock('../src/session-store.js')
+      vi.resetModules()
+    }
   })
 
   it('persists Web sessions and reloads them for a later server instance', async () => {
@@ -603,7 +899,14 @@ async function startServer(
 }
 
 async function createTempCwd(): Promise<string> {
-  const cwd = await mkdtemp(join(tmpdir(), 'cc-local-web-server-'))
+  const cwd = await realpath(await mkdtemp(join(tmpdir(), 'cc-local-web-server-')))
+  await mkdir(join(cwd, 'workspace'))
+  tempDirs.push(cwd)
+  return cwd
+}
+
+async function createTempCwdWithoutWorkspace(): Promise<string> {
+  const cwd = await realpath(await mkdtemp(join(tmpdir(), 'cc-local-web-server-')))
   tempDirs.push(cwd)
   return cwd
 }

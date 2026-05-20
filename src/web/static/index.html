@@ -32,6 +32,12 @@
             <button id="newChatButton" class="nav-action" type="button">New chat</button>
             <div id="sessionHistory" class="session-history" aria-label="Session history"></div>
           </div>
+
+          <section id="workspacePanel" class="workspace-panel" aria-label="Workspace">
+            <div id="workspaceCurrent" class="workspace-current"></div>
+            <button id="workspaceChangeButton" class="workspace-change-button" type="button" aria-expanded="false" aria-controls="workspacePicker">Change</button>
+            <div id="workspacePicker" class="workspace-picker" hidden></div>
+          </section>
         </div>
 
         <div id="sidebarRail" class="sidebar-rail" aria-label="Collapsed workspace">
