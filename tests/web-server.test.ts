@@ -281,6 +281,7 @@ describe('startWebServer', () => {
     expect(body).toContain('isWorkspaceLocked')
     expect(body).toContain('loadMarkdownFiles')
     expect(body).toContain('renderMarkdownPreview')
+    expect(body).toContain("state.selectedMarkdownContent = ''\n  renderInspector()")
     expect(body).toContain('app-helpers.js')
     expect(body).toContain('renderMarkdownHtml')
     expect(body).toContain('ownsMarkdownFileResponse')

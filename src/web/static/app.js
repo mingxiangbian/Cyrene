@@ -425,6 +425,7 @@ async function loadMarkdownFile(fileId) {
   state.markdownError = null
   state.selectedMarkdownId = fileId
   state.selectedMarkdownContent = ''
+  renderInspector()
 
   let response
   try {
