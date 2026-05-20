@@ -288,6 +288,35 @@ describe('runRepl', () => {
     })
   })
 
+  it('still resolves graceful exit when daily compaction fails', async () => {
+    const config = createDefaultConfig('/tmp/project')
+    const readline = createTestReadline(['exit'])
+    const compactDailyIfNeeded = vi.fn(async (_input: CompactDailyIfNeededInput) => {
+      throw new Error('daily compaction failed')
+    })
+    const callModel = vi.fn(async (_input: CallModelInput): Promise<ModelResponse> => ({ content: 'unused', toolCalls: [] }))
+    const consoleLog = vi.spyOn(console, 'log').mockImplementation(() => {})
+
+    try {
+      await expect(
+        runRepl({
+          config,
+          systemPrompt: 'system rules',
+          tools: [],
+          callModel,
+          readline,
+          compactDailyIfNeeded
+        })
+      ).resolves.toBeUndefined()
+    } finally {
+      consoleLog.mockRestore()
+    }
+
+    expect(readline.close).toHaveBeenCalledTimes(1)
+    expect(callModel).not.toHaveBeenCalled()
+    expect(compactDailyIfNeeded).toHaveBeenCalledTimes(1)
+  })
+
   it('prints the Prism mascot welcome before reading REPL input', async () => {
     const config = createDefaultConfig('/tmp/project')
     const readline = createTestReadline(['exit'])

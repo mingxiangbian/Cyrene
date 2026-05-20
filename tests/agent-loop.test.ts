@@ -1,10 +1,21 @@
+import { mkdtemp, readFile, rm } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 import { z } from 'zod'
-import { describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it } from 'vitest'
 import { runAgentLoop } from '../src/agent-loop.js'
 import { createDefaultConfig } from '../src/config.js'
 import type { ChatMessage, ModelResponse } from '../src/llm-client.js'
 import type { Tool, ToolContext } from '../src/tools/types.js'
 import type { AgentObserver } from '../src/ui-observer.js'
+
+const tempDirs: string[] = []
+
+async function createTempDir(): Promise<string> {
+  const dir = await mkdtemp(join(tmpdir(), 'cc-local-agent-loop-'))
+  tempDirs.push(dir)
+  return dir
+}
 
 const echoTool: Tool<{ text: string }> = {
   name: 'echo',
@@ -49,6 +60,10 @@ const failingWebSearchTool: Tool<{ query: string }> = {
 }
 
 describe('runAgentLoop', () => {
+  afterEach(async () => {
+    await Promise.all(tempDirs.splice(0).map((dir) => rm(dir, { recursive: true, force: true })))
+  })
+
   it('returns assistant text when no tool calls are requested', async () => {
     const result = await runAgentLoop({
       config: createDefaultConfig('/tmp/project'),
@@ -591,30 +606,20 @@ describe('runAgentLoop', () => {
     expect(events).toEqual(['thinking:start', 'thinking:stop', 'response'])
   })
 
-  it('does not append per-tool daily facts for tool-only work while summary hook is called once', async () => {
-    const dailyChunks: string[][] = []
-    const summaryInputs: Array<{ userPrompt: string; finalText: string }> = []
+  it('writes only a durable final summary for tool-assisted work', async () => {
+    const root = await createTempDir()
+    const config = createDefaultConfig(root)
     let calls = 0
 
     const result = await runAgentLoop({
-      config: createDefaultConfig('/tmp/project'),
+      config,
       systemPrompt: 'system',
-      userPrompt: 'echo',
+      userPrompt: 'Remember: daily memory should store content summaries instead of tool-call logs.',
       tools: [echoTool],
-      dailyLogger: {
-        appendDaily: async (_cwd, chunks) => {
-          dailyChunks.push(chunks)
-        }
-      },
-      dailySummary: {
-        maybeAppendDailySummary: async ({ userPrompt, finalText }) => {
-          summaryInputs.push({ userPrompt, finalText })
-          return true
-        }
-      },
-      callModel: async (): Promise<ModelResponse> => {
+      callModel: async ({ tools }): Promise<ModelResponse> => {
         calls += 1
         if (calls === 1) {
+          expect(tools).not.toEqual([])
           return {
             content: '',
             toolCalls: [
@@ -626,18 +631,34 @@ describe('runAgentLoop', () => {
             ]
           }
         }
-        return { content: 'done', toolCalls: [] }
+        if (calls === 2) {
+          expect(tools).not.toEqual([])
+          return {
+            content: 'User prefers daily memory to store content summaries instead of tool-call logs.',
+            toolCalls: []
+          }
+        }
+
+        expect(tools).toEqual([])
+        return {
+          content: JSON.stringify({
+            shouldRemember: true,
+            summary: 'User prefers daily memory to store content summaries instead of tool-call logs.'
+          }),
+          toolCalls: []
+        }
       }
     })
 
-    expect(result.finalText).toBe('done')
-    expect(dailyChunks).toEqual([])
-    expect(summaryInputs).toEqual([{ userPrompt: 'echo', finalText: 'done' }])
+    expect(result.finalText).toBe('User prefers daily memory to store content summaries instead of tool-call logs.')
+    expect(calls).toBe(3)
+    const dailyMemory = await readFile(join(root, '.cc-local', 'memory', 'daily.md'), 'utf8')
+    expect(dailyMemory).toContain('User prefers daily memory to store content summaries instead of tool-call logs.')
+    expect(dailyMemory).not.toContain('echo ->')
   })
 
-  it('exposes failed-tool outcomes only through final answer summary input, not per-tool chunks', async () => {
+  it('exposes failed-tool outcomes through final answer summary input', async () => {
     const config = createDefaultConfig('/tmp/project')
-    const dailyChunks: string[][] = []
     const summaryInputs: Array<{ userPrompt: string; finalText: string }> = []
     let calls = 0
 
@@ -646,11 +667,6 @@ describe('runAgentLoop', () => {
       systemPrompt: 'system',
       userPrompt: 'search',
       tools: [failingWebSearchTool],
-      dailyLogger: {
-        appendDaily: async (_cwd, chunks) => {
-          dailyChunks.push(chunks)
-        }
-      },
       dailySummary: {
         maybeAppendDailySummary: async ({ userPrompt, finalText }) => {
           summaryInputs.push({ userPrompt, finalText })
@@ -676,7 +692,6 @@ describe('runAgentLoop', () => {
     })
 
     expect(result.finalText).toBe('Search failed because network was down.')
-    expect(dailyChunks).toEqual([])
     expect(summaryInputs).toEqual([
       { userPrompt: 'search', finalText: 'Search failed because network was down.' }
     ])

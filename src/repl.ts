@@ -128,11 +128,15 @@ export async function runRepl(inputConfig: {
   }
 
   if (gracefulExit) {
-    await (inputConfig.compactDailyIfNeeded ?? defaultCompactDailyIfNeeded)({
-      cwd: inputConfig.config.cwd,
-      config: inputConfig.config,
-      callModel: inputConfig.callModel ?? defaultCallModel
-    })
+    try {
+      await (inputConfig.compactDailyIfNeeded ?? defaultCompactDailyIfNeeded)({
+        cwd: inputConfig.config.cwd,
+        config: inputConfig.config,
+        callModel: inputConfig.callModel ?? defaultCallModel
+      })
+    } catch {
+      // Daily compaction is best-effort on exit.
+    }
   }
 }
 

@@ -22,9 +22,6 @@ interface RunAgentLoopBaseInput {
   tools: Tool<unknown>[]
   toolContext?: ToolContext
   observer?: AgentObserver
-  dailyLogger?: {
-    appendDaily: (cwd: string, chunks: string[]) => Promise<void>
-  }
   dailySummary?: {
     maybeAppendDailySummary: typeof maybeAppendDailySummary
   }

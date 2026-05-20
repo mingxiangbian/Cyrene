@@ -39,8 +39,8 @@ const operationalPatterns = [
   /^\s*\[?\d{0,4}[-:\d\s]*\]?\s*(glob|grep|file_read|file_write|file_edit|bash|web_search)\s*->/i,
   /\b(glob|grep|file_read|file_write|file_edit|bash|web_search)\s*->\s*(ok|failed)\b/i,
   /^edited\s+\S+/i,
-  /^(modified|changed|updated)\s+\S+/i,
-  /\b(edited|modified|changed|updated)\s+[\w./-]+\.[\w-]+\b/i,
+  /^(added|created|implemented|modified|changed|updated)\s+\S+/i,
+  /\b(added|created|edited|implemented|modified|changed|updated)\s+[\w./-]+\.[\w-]+\b/i,
   /^wrote\s+\S+/i,
   /^ran\s+(rg|grep|glob|npm|git|bash)\b/i
 ]

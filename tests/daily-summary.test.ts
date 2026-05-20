@@ -121,6 +121,9 @@ describe('daily summary filtering', () => {
     expect(validateDailySummary('The user asked a follow up.', config)).toBe(false)
     expect(validateDailySummary('glob -> ok', config)).toBe(false)
     expect(validateDailySummary('Edited src/agent-loop.ts.', config)).toBe(false)
+    expect(validateDailySummary('Added daily memory summary filtering in src/daily-summary.ts.', config)).toBe(false)
+    expect(validateDailySummary('Implemented daily memory summary filtering in src/daily-summary.ts.', config)).toBe(false)
+    expect(validateDailySummary('Created tests/daily-summary.test.ts for summary filtering.', config)).toBe(false)
     expect(validateDailySummary('Modified src/daily-summary.ts to add memory validation.', config)).toBe(false)
     expect(validateDailySummary('Updated src/agent-loop.ts for memory behavior.', config)).toBe(false)
     expect(
