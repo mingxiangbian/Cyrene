@@ -1004,7 +1004,7 @@ function renderContextPanel() {
 function renderMarkdownPreview(markdown) {
   const preview = document.createElement('div')
   preview.className = 'markdown-preview'
-  preview.innerHTML = renderMarkdownHtml(markdown)
+  preview.innerHTML = renderMarkdownHtml(markdown, { workspaceId: state.workspaceId })
   return preview
 }
 

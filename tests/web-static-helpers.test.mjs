@@ -4,6 +4,7 @@ import {
   contextUsagePercent,
   encodedWorkspaceId,
   estimateContextTokens,
+  escapeHtml,
   isWorkspaceLockedState,
   ownsMarkdownFileResponse,
   ownsMarkdownFilesResponse,
@@ -30,6 +31,30 @@ describe('web static helpers', () => {
     expect(html).toContain('<pre><code>&lt;button&gt;nope&lt;/button&gt;</code></pre>')
     expect(html).not.toContain('<script>')
     expect(html).not.toContain('<button>nope</button>')
+  })
+
+  it('renders safe full-line Markdown PNG images through the workspace file route', () => {
+    const html = renderMarkdownHtml('![Portrait <one>](generated-images/portrait.png)', {
+      workspaceId: 'project-a'
+    })
+
+    expect(html).toContain('<img')
+    expect(html).toContain('alt="Portrait &lt;one&gt;"')
+    expect(html).toContain('src="/api/workspaces/project-a/files/generated-images/portrait.png"')
+    expect(html).not.toContain('<one>')
+  })
+
+  it.each([
+    '../secret.png',
+    '/tmp/secret.png',
+    'javascript:alert(1)'
+  ])('leaves unsafe Markdown image paths escaped as paragraph text: %s', (path) => {
+    const markdown = `![Secret <one>](${path})`
+    const html = renderMarkdownHtml(markdown, { workspaceId: 'project-a' })
+
+    expect(html).toBe(`<p>${escapeHtml(markdown)}</p>`)
+    expect(html).not.toContain('<img')
+    expect(html).not.toContain('<one>')
   })
 
   it('accepts only Markdown list responses for the current workspace and token', () => {

@@ -1008,6 +1008,18 @@ button:disabled {
   margin-top: 4px;
 }
 
+.markdown-preview .markdown-image {
+  display: block;
+}
+
+.markdown-preview img {
+  display: block;
+  max-width: 100%;
+  height: auto;
+  border: 1px solid rgba(117, 139, 166, 0.22);
+  border-radius: 8px;
+}
+
 .markdown-preview pre {
   max-width: 100%;
   overflow-x: auto;

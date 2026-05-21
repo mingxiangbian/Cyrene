@@ -52,7 +52,7 @@ export function ownsMarkdownFileResponse({
   }) && currentFileId === responseFileId
 }
 
-export function renderMarkdownHtml(markdown) {
+export function renderMarkdownHtml(markdown, options = {}) {
   const parts = []
   const lines = String(markdown || '').split(/\r?\n/)
   let paragraph = []
@@ -101,6 +101,14 @@ export function renderMarkdownHtml(markdown) {
       flushList()
       continue
     }
+    const image = parseMarkdownImageLine(line)
+    if (image && isSafeMarkdownImagePath(image.path)) {
+      flushParagraph()
+      flushList()
+      const src = buildWorkspaceImageSrc(options.workspaceId || '', image.path)
+      parts.push(`<p class="markdown-image"><img alt="${escapeHtml(image.alt)}" src="${src}"></p>`)
+      continue
+    }
     if (line.startsWith('### ')) {
       flushParagraph()
       flushList()
@@ -134,6 +142,29 @@ export function renderMarkdownHtml(markdown) {
   flushParagraph()
   flushList()
   return parts.join('')
+}
+
+function parseMarkdownImageLine(line) {
+  const match = line.trim().match(/^!\[([^\]]*)\]\(([^)]*)\)$/)
+  if (!match) {
+    return null
+  }
+  return { alt: match[1], path: match[2] }
+}
+
+function isSafeMarkdownImagePath(path) {
+  if (!path || path.startsWith('/') || path.includes('\\') || !path.endsWith('.png')) {
+    return false
+  }
+  if (/^[a-z][a-z0-9+.-]*:/i.test(path)) {
+    return false
+  }
+  return path.split('/').every((segment) => segment !== '' && segment !== '.' && segment !== '..')
+}
+
+function buildWorkspaceImageSrc(workspaceId, path) {
+  const encodedPath = path.split('/').map((segment) => encodeURIComponent(segment)).join('/')
+  return `/api/workspaces/${encodedWorkspaceId(workspaceId)}/files/${encodedPath}`
 }
 
 export function escapeHtml(value) {
