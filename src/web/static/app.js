@@ -18,6 +18,7 @@ const railNewChatButton = document.querySelector('#railNewChatButton')
 const sidebarToggle = document.querySelector('#sidebarToggle')
 const railSidebarToggle = document.querySelector('#railSidebarToggle')
 const inspector = document.querySelector('#inspector')
+const themeToggle = document.querySelector('#themeToggle')
 const inspectorEdgeToggle = document.querySelector('#inspectorEdgeToggle')
 const inspectorClose = document.querySelector('#inspectorClose')
 const inspectorContent = document.querySelector('#inspectorContent')
@@ -27,10 +28,13 @@ const sessionHistory = document.querySelector('#sessionHistory')
 const workspaceChangeButton = document.querySelector('#workspaceChangeButton')
 const workspacePicker = document.querySelector('#workspacePicker')
 const tabs = Array.from(document.querySelectorAll('.tab'))
+const THEME_STORAGE_KEY = 'cyrene.theme'
 
 const state = {
   sessionId: null,
   sessions: [],
+  openSessionMenuId: null,
+  sessionMenuPosition: null,
   messages: [],
   activeRun: null,
   isSending: false,
@@ -46,6 +50,7 @@ const state = {
   inspectorTab: 'tools',
   sidebarCollapsed: false,
   inspectorOpen: false,
+  theme: readStoredTheme(),
   runStatus: 'Ready'
 }
 
@@ -56,6 +61,7 @@ const markdownRequests = {
 
 void loadWorkspaces()
 void loadSessions()
+setTheme(state.theme)
 updateChatLayoutState()
 
 composer?.addEventListener('submit', (event) => {
@@ -77,6 +83,15 @@ sidebarToggle?.addEventListener('click', () => setSidebarCollapsed(true))
 railSidebarToggle?.addEventListener('click', () => setSidebarCollapsed(false))
 inspectorEdgeToggle?.addEventListener('click', () => setInspectorOpen(true))
 inspectorClose?.addEventListener('click', () => setInspectorOpen(false))
+themeToggle?.addEventListener('click', () => {
+  const nextTheme = state.theme === 'dark' ? 'light' : 'dark'
+  setTheme(nextTheme)
+})
+document.addEventListener('click', () => {
+  closeSessionMenu()
+})
+sessionHistory?.addEventListener('scroll', () => closeSessionMenu())
+window.addEventListener('resize', () => closeSessionMenu())
 workspaceChangeButton?.addEventListener('click', () => {
   if (isWorkspaceLocked()) {
     return
@@ -93,6 +108,7 @@ function resetChat() {
     return
   }
   state.sessionId = null
+  closeSessionMenu(false)
   state.messages = []
   state.tools = []
   updateChatTitle('Untitled session')
@@ -152,6 +168,7 @@ async function sendPrompt() {
     return
   }
 
+  closeSessionMenu(false)
   clearEmptyState()
   appendMessage('user', content)
   state.messages.push({ role: 'user', content })
@@ -333,6 +350,9 @@ async function loadSessions() {
   }
   const body = await response.json()
   state.sessions = Array.isArray(body.sessions) ? body.sessions : []
+  if (state.openSessionMenuId !== null && !state.sessions.some((session) => session.id === state.openSessionMenuId)) {
+    closeSessionMenu(false)
+  }
   renderSessionList()
   const current = state.sessions.find((session) => session.id === state.sessionId)
   if (current) {
@@ -512,6 +532,7 @@ async function loadSession(sessionId) {
   if (isRunLocked() || sessionId === state.sessionId) {
     return
   }
+  closeSessionMenu(false)
   const response = await fetch(`/api/sessions/${encodeURIComponent(sessionId)}`)
   if (!response.ok) {
     return
@@ -544,10 +565,13 @@ function renderSessionList() {
 
   const sessionLocked = isRunLocked()
   for (const session of state.sessions) {
+    const row = document.createElement('div')
+    row.className = 'session-row'
+    row.classList.toggle('is-active', session.id === state.sessionId)
+
     const button = document.createElement('button')
-    button.className = 'session-row'
+    button.className = 'session-title-button'
     button.type = 'button'
-    button.classList.toggle('is-active', session.id === state.sessionId)
     button.disabled = sessionLocked
     button.addEventListener('click', () => {
       void loadSession(session.id)
@@ -557,13 +581,150 @@ function renderSessionList() {
     title.className = 'session-title'
     title.textContent = session.title || 'Untitled session'
 
-    const preview = document.createElement('span')
-    preview.className = 'session-preview'
-    preview.textContent = session.preview || formatSessionTime(session.updatedAt)
+    button.append(title)
+    row.append(button)
 
-    button.append(title, preview)
-    sessionHistory.append(button)
+    if (session.id === state.sessionId) {
+      const menuButton = document.createElement('button')
+      menuButton.className = 'session-menu-button'
+      menuButton.type = 'button'
+      menuButton.disabled = sessionLocked
+      menuButton.setAttribute('aria-label', `Session actions for ${session.title || 'Untitled session'}`)
+      menuButton.setAttribute('aria-expanded', String(state.openSessionMenuId === session.id))
+      menuButton.append(createIcon('dots'))
+      menuButton.addEventListener('click', (event) => {
+        event.stopPropagation()
+        if (state.openSessionMenuId === session.id) {
+          closeSessionMenu(false)
+        } else {
+          state.openSessionMenuId = session.id
+          state.sessionMenuPosition = getSessionMenuPosition(menuButton)
+        }
+        renderSessionList()
+      })
+      row.append(menuButton)
+
+      if (state.openSessionMenuId === session.id) {
+        row.append(renderSessionMenu(session))
+      }
+    }
+
+    sessionHistory.append(row)
   }
+}
+
+function renderSessionMenu(session) {
+  const menu = document.createElement('div')
+  menu.className = 'session-menu'
+  if (state.sessionMenuPosition) {
+    menu.style.top = `${state.sessionMenuPosition.top}px`
+    menu.style.left = `${state.sessionMenuPosition.left}px`
+  }
+  menu.addEventListener('click', (event) => {
+    event.stopPropagation()
+  })
+
+  const pinButton = document.createElement('button')
+  pinButton.className = 'session-action'
+  pinButton.type = 'button'
+  pinButton.append(createIcon('pin'), document.createTextNode(session.pinned ? 'Unpin chat' : 'Pin chat'))
+  pinButton.addEventListener('click', (event) => {
+    event.stopPropagation()
+    void toggleSessionPinned(session)
+  })
+
+  const deleteButton = document.createElement('button')
+  deleteButton.className = 'session-action danger'
+  deleteButton.type = 'button'
+  deleteButton.append(createIcon('trash'), document.createTextNode('Delete chat'))
+  deleteButton.addEventListener('click', (event) => {
+    event.stopPropagation()
+    void deleteSession(session.id)
+  })
+
+  menu.append(pinButton, deleteButton)
+  return menu
+}
+
+function closeSessionMenu(shouldRender = true) {
+  if (state.openSessionMenuId === null && state.sessionMenuPosition === null) {
+    return
+  }
+  state.openSessionMenuId = null
+  state.sessionMenuPosition = null
+  if (shouldRender) {
+    renderSessionList()
+  }
+}
+
+function getSessionMenuPosition(anchor) {
+  const rect = anchor.getBoundingClientRect()
+  const menuWidth = 150
+  const menuHeight = 96
+  const gap = 6
+  const margin = 12
+  const rightLimit = Math.max(margin, window.innerWidth - menuWidth - margin)
+  const below = rect.bottom + gap
+  const above = rect.top - menuHeight - gap
+  const top = below + menuHeight <= window.innerHeight - margin ? below : Math.max(margin, above)
+  return {
+    top,
+    left: Math.min(Math.max(margin, rect.right - menuWidth), rightLimit)
+  }
+}
+
+async function toggleSessionPinned(session) {
+  if (isRunLocked()) {
+    return
+  }
+  closeSessionMenu(false)
+  let response
+  try {
+    response = await fetch(`/api/sessions/${encodeURIComponent(session.id)}`, {
+      method: 'PATCH',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ pinned: !session.pinned })
+    })
+  } catch {
+    closeSessionMenu(false)
+    renderSessionList()
+    return
+  }
+  if (response.ok) {
+    await loadSessions()
+    return
+  }
+  closeSessionMenu(false)
+  renderSessionList()
+}
+
+async function deleteSession(sessionId) {
+  if (isRunLocked()) {
+    return
+  }
+  const session = state.sessions.find((item) => item.id === sessionId)
+  const title = session?.title || 'Untitled session'
+  if (!window.confirm(`Delete "${title}"?`)) {
+    return
+  }
+  closeSessionMenu(false)
+  let response
+  try {
+    response = await fetch(`/api/sessions/${encodeURIComponent(sessionId)}`, { method: 'DELETE' })
+  } catch {
+    closeSessionMenu(false)
+    renderSessionList()
+    return
+  }
+  if (!response.ok) {
+    closeSessionMenu(false)
+    renderSessionList()
+    return
+  }
+  if (sessionId === state.sessionId) {
+    resetChat()
+  }
+  await loadSessions()
 }
 
 function renderWorkspacePanel() {
@@ -667,6 +828,94 @@ function setInspectorOpen(open) {
   inspectorEdgeToggle?.setAttribute('aria-expanded', String(open))
 }
 
+function readStoredTheme() {
+  try {
+    return localStorage.getItem(THEME_STORAGE_KEY) === 'dark' ? 'dark' : 'light'
+  } catch {
+    return 'light'
+  }
+}
+
+function setTheme(nextTheme) {
+  state.theme = nextTheme === 'dark' ? 'dark' : 'light'
+  document.body.classList.toggle('theme-dark', state.theme === 'dark')
+  try {
+    localStorage.setItem(THEME_STORAGE_KEY, state.theme)
+  } catch {
+    // Theme still applies for this page load when storage is unavailable.
+  }
+  renderThemeToggle()
+}
+
+function renderThemeToggle() {
+  if (!themeToggle) {
+    return
+  }
+  const switchesToDark = state.theme !== 'dark'
+  const label = switchesToDark ? 'Switch to dark mode' : 'Switch to light mode'
+  themeToggle.replaceChildren(createIcon(switchesToDark ? 'moon' : 'sun'))
+  themeToggle.setAttribute('aria-label', label)
+  themeToggle.setAttribute('title', label)
+}
+
+function createIcon(name) {
+  const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg')
+  svg.setAttribute('viewBox', '0 0 24 24')
+  svg.setAttribute('width', '18')
+  svg.setAttribute('height', '18')
+  svg.setAttribute('fill', 'none')
+  svg.setAttribute('stroke', 'currentColor')
+  svg.setAttribute('stroke-width', '1.8')
+  svg.setAttribute('stroke-linecap', 'round')
+  svg.setAttribute('stroke-linejoin', 'round')
+  svg.setAttribute('aria-hidden', 'true')
+
+  const add = (tag, attrs) => {
+    const node = document.createElementNS('http://www.w3.org/2000/svg', tag)
+    Object.entries(attrs).forEach(([key, value]) => {
+      node.setAttribute(key, value)
+    })
+    svg.append(node)
+  }
+
+  switch (name) {
+    case 'dots':
+      add('circle', { cx: '6', cy: '12', r: '1' })
+      add('circle', { cx: '12', cy: '12', r: '1' })
+      add('circle', { cx: '18', cy: '12', r: '1' })
+      break
+    case 'pin':
+      add('path', { d: 'M14 4l6 6-4 1-5 5-3-3 5-5 1-4z' })
+      add('path', { d: 'M8 16l-4 4' })
+      break
+    case 'trash':
+      add('path', { d: 'M4 7h16' })
+      add('path', { d: 'M9 7V5h6v2' })
+      add('path', { d: 'M6 7l1 13h10l1-13' })
+      add('path', { d: 'M10 11v5' })
+      add('path', { d: 'M14 11v5' })
+      break
+    case 'moon':
+      add('path', { d: 'M20 15.5A8 8 0 118.5 4 6.5 6.5 0 0020 15.5z' })
+      break
+    case 'sun':
+      add('circle', { cx: '12', cy: '12', r: '4' })
+      add('path', { d: 'M12 2v2' })
+      add('path', { d: 'M12 20v2' })
+      add('path', { d: 'M4.93 4.93l1.41 1.41' })
+      add('path', { d: 'M17.66 17.66l1.41 1.41' })
+      add('path', { d: 'M2 12h2' })
+      add('path', { d: 'M20 12h2' })
+      add('path', { d: 'M4.93 19.07l1.41-1.41' })
+      add('path', { d: 'M17.66 6.34l1.41-1.41' })
+      break
+    default:
+      break
+  }
+
+  return svg
+}
+
 function renderInspector() {
   if (!inspectorContent) {
     return
@@ -756,6 +1005,9 @@ function renderNote(text) {
 
 function setSending(isSending) {
   state.isSending = isSending
+  if (isSending) {
+    closeSessionMenu(false)
+  }
   if (sendButton) {
     sendButton.disabled = isSending
     sendButton.textContent = isSending ? 'Running' : 'Send'

@@ -1,12 +1,14 @@
-import { mkdir, mkdtemp, readFile, rm, symlink } from 'node:fs/promises'
+import { mkdir, mkdtemp, readFile, rm, symlink, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
 import {
   appendSessionEvent,
   createSession,
+  deleteSession,
   listSessions,
-  loadSession
+  loadSession,
+  updateSessionPinned
 } from '../src/session-store.js'
 
 const tempDirs: string[] = []
@@ -103,6 +105,136 @@ describe('session store', () => {
     const cwd = await createTempCwd()
 
     await expect(loadSession({ cwd, sessionId: 'missing', recentMessages: 10 })).resolves.toBeNull()
+  })
+
+  it('sorts pinned sessions first while keeping updated order within groups', async () => {
+    const cwd = await createTempCwd()
+    await createSession({
+      cwd,
+      mode: 'web',
+      model: 'test-model',
+      id: 'older-pinned',
+      now: new Date('2026-05-20T01:00:00.000Z')
+    })
+    await createSession({
+      cwd,
+      mode: 'web',
+      model: 'test-model',
+      id: 'newer-unpinned',
+      now: new Date('2026-05-20T03:00:00.000Z')
+    })
+    await createSession({
+      cwd,
+      mode: 'web',
+      model: 'test-model',
+      id: 'newer-pinned',
+      now: new Date('2026-05-20T02:00:00.000Z')
+    })
+
+    await updateSessionPinned({ cwd, sessionId: 'older-pinned', pinned: true })
+    await updateSessionPinned({ cwd, sessionId: 'newer-pinned', pinned: true })
+
+    await expect(listSessions(cwd)).resolves.toMatchObject([
+      { id: 'newer-pinned', pinned: true },
+      { id: 'older-pinned', pinned: true },
+      { id: 'newer-unpinned', pinned: false }
+    ])
+  })
+
+  it('updates pinned state and persists it through the session index', async () => {
+    const cwd = await createTempCwd()
+    await createSession({
+      cwd,
+      mode: 'web',
+      model: 'test-model',
+      id: 'pin-me'
+    })
+
+    await expect(updateSessionPinned({ cwd, sessionId: 'pin-me', pinned: true })).resolves.toEqual(
+      expect.objectContaining({ id: 'pin-me', pinned: true })
+    )
+    await expect(listSessions(cwd)).resolves.toEqual([
+      expect.objectContaining({ id: 'pin-me', pinned: true })
+    ])
+    await expect(updateSessionPinned({ cwd, sessionId: 'pin-me', pinned: false })).resolves.toEqual(
+      expect.objectContaining({ id: 'pin-me', pinned: false })
+    )
+    await expect(updateSessionPinned({ cwd, sessionId: 'missing', pinned: true })).resolves.toBeNull()
+  })
+
+  it('treats legacy index entries without pinned as unpinned', async () => {
+    const cwd = await createTempCwd()
+    await mkdir(join(cwd, '.cc-local', 'sessions'), { recursive: true })
+    await writeFile(join(cwd, '.cc-local', 'sessions', 'index.json'), JSON.stringify([
+      {
+        id: 'legacy',
+        mode: 'web',
+        title: 'Legacy',
+        preview: '',
+        createdAt: '2026-05-20T01:00:00.000Z',
+        updatedAt: '2026-05-20T01:00:00.000Z',
+        model: 'test-model'
+      }
+    ]), 'utf8')
+
+    await expect(listSessions(cwd)).resolves.toEqual([
+      expect.objectContaining({ id: 'legacy', pinned: false })
+    ])
+  })
+
+  it('deletes sessions from the index and removes their JSONL file', async () => {
+    const cwd = await createTempCwd()
+    await createSession({
+      cwd,
+      mode: 'web',
+      model: 'test-model',
+      id: 'delete-me'
+    })
+
+    await expect(deleteSession({ cwd, sessionId: 'delete-me' })).resolves.toBe(true)
+    await expect(listSessions(cwd)).resolves.toEqual([])
+    await expect(readFile(join(cwd, '.cc-local', 'sessions', 'delete-me.jsonl'), 'utf8')).rejects.toMatchObject({
+      code: 'ENOENT'
+    })
+    await expect(deleteSession({ cwd, sessionId: 'delete-me' })).resolves.toBe(false)
+  })
+
+  it('deletes index entries even when the JSONL file is already missing', async () => {
+    const cwd = await createTempCwd()
+    await createSession({
+      cwd,
+      mode: 'web',
+      model: 'test-model',
+      id: 'missing-jsonl'
+    })
+    await rm(join(cwd, '.cc-local', 'sessions', 'missing-jsonl.jsonl'))
+
+    await expect(deleteSession({ cwd, sessionId: 'missing-jsonl' })).resolves.toBe(true)
+    await expect(listSessions(cwd)).resolves.toEqual([])
+  })
+
+  it('rejects deleting a symlink JSONL file and leaves the target and index entry intact', async () => {
+    const cwd = await createTempCwd()
+    const outside = await createTempCwd()
+    await createSession({
+      cwd,
+      mode: 'web',
+      model: 'test-model',
+      id: 'symlink-session'
+    })
+    const sessionPath = join(cwd, '.cc-local', 'sessions', 'symlink-session.jsonl')
+    const outsideTarget = join(outside, 'outside-session.jsonl')
+    await rm(sessionPath)
+    await writeFile(outsideTarget, 'outside\n', 'utf8')
+    await symlink(outsideTarget, sessionPath)
+
+    await expect(deleteSession({ cwd, sessionId: 'symlink-session' })).rejects.toThrow(
+      'Session path must not be a symlink'
+    )
+    await expect(readFile(outsideTarget, 'utf8')).resolves.toBe('outside\n')
+    await expect(listSessions(cwd)).resolves.toEqual([
+      expect.objectContaining({ id: 'symlink-session' })
+    ])
   })
 })
 

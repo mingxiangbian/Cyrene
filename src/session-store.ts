@@ -1,4 +1,4 @@
-import { appendFile, lstat, mkdir, readFile, realpath, rename, writeFile } from 'node:fs/promises'
+import { appendFile, lstat, mkdir, readFile, realpath, rename, rm, writeFile } from 'node:fs/promises'
 import { join, resolve, sep } from 'node:path'
 import { randomUUID } from 'node:crypto'
 import type { ChatMessage } from './llm-client.js'
@@ -13,6 +13,7 @@ export interface SessionIndexItem {
   createdAt: string
   updatedAt: string
   model: string
+  pinned: boolean
 }
 
 export type SessionEvent =
@@ -56,7 +57,8 @@ export async function createSession(input: {
     preview: previewFromMessage(input.firstUserMessage) ?? '',
     createdAt: now,
     updatedAt: now,
-    model: input.model
+    model: input.model,
+    pinned: false
   }
 
   const existing = await readIndex(input.cwd)
@@ -117,6 +119,50 @@ export async function appendSessionEvent(input: {
 
 export async function listSessions(cwd: string): Promise<SessionIndexItem[]> {
   return readIndex(cwd)
+}
+
+export async function updateSessionPinned(input: {
+  cwd: string
+  sessionId: string
+  pinned: boolean
+}): Promise<SessionIndexItem | null> {
+  assertSafeSessionId(input.sessionId)
+  const index = await readIndex(input.cwd)
+  const existing = index.find((item) => item.id === input.sessionId)
+  if (existing === undefined) {
+    return null
+  }
+
+  const updated: SessionIndexItem = {
+    ...existing,
+    pinned: input.pinned
+  }
+  await writeIndex(input.cwd, upsertSession(index, updated))
+  return updated
+}
+
+export async function deleteSession(input: {
+  cwd: string
+  sessionId: string
+}): Promise<boolean> {
+  assertSafeSessionId(input.sessionId)
+  const index = await readIndex(input.cwd)
+  if (!index.some((item) => item.id === input.sessionId)) {
+    return false
+  }
+
+  try {
+    const path = sessionFilePath(input.cwd, input.sessionId)
+    await assertPathIsNotSymlink(path)
+    await rm(path)
+  } catch (error) {
+    if (!isObject(error) || error.code !== 'ENOENT') {
+      throw error
+    }
+  }
+
+  await writeIndex(input.cwd, index.filter((item) => item.id !== input.sessionId))
+  return true
 }
 
 export async function loadSession(input: {
@@ -223,7 +269,10 @@ async function readIndex(cwd: string): Promise<SessionIndexItem[]> {
     if (!Array.isArray(parsed)) {
       return []
     }
-    return parsed.filter(isSessionIndexItem).sort(compareSessions)
+    return parsed
+      .filter(isSessionIndexItem)
+      .map(normalizeSessionIndexItem)
+      .sort(compareSessions)
   } catch {
     return []
   }
@@ -258,7 +307,17 @@ function upsertSession(sessions: SessionIndexItem[], session: SessionIndexItem):
 }
 
 function compareSessions(left: SessionIndexItem, right: SessionIndexItem): number {
+  if (left.pinned !== right.pinned) {
+    return left.pinned ? -1 : 1
+  }
   return right.updatedAt.localeCompare(left.updatedAt)
+}
+
+function normalizeSessionIndexItem(item: SessionIndexItem | LegacySessionIndexItem): SessionIndexItem {
+  return {
+    ...item,
+    pinned: item.pinned ?? false
+  }
 }
 
 function sessionsDir(cwd: string): string {
@@ -311,7 +370,11 @@ function toIso(date: Date | undefined): string {
   return (date ?? new Date()).toISOString()
 }
 
-function isSessionIndexItem(value: unknown): value is SessionIndexItem {
+type LegacySessionIndexItem = Omit<SessionIndexItem, 'pinned'> & {
+  pinned?: boolean
+}
+
+function isSessionIndexItem(value: unknown): value is LegacySessionIndexItem {
   return isObject(value) &&
     typeof value.id === 'string' &&
     (value.mode === 'web' || value.mode === 'repl') &&
@@ -319,7 +382,8 @@ function isSessionIndexItem(value: unknown): value is SessionIndexItem {
     typeof value.preview === 'string' &&
     typeof value.createdAt === 'string' &&
     typeof value.updatedAt === 'string' &&
-    typeof value.model === 'string'
+    typeof value.model === 'string' &&
+    (value.pinned === undefined || typeof value.pinned === 'boolean')
 }
 
 function isObject(value: unknown): value is Record<string, unknown> {

@@ -1,4 +1,4 @@
-import { mkdir, mkdtemp, realpath, rm, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, realpath, rm, symlink, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it, vi } from 'vitest'
@@ -58,9 +58,12 @@ describe('startWebServer', () => {
     expect(body).toContain('aria-controls="workspacePicker"')
     expect(body).toContain('id="workspacePicker"')
     expect(body).toContain('id="inspectorEdgeToggle"')
+    expect(body).toContain('<button id="themeToggle" class="theme-toggle icon-button icon-only" type="button" aria-label="Switch to dark mode" title="Switch to dark mode"></button>')
+    expect(body.indexOf('id="themeToggle"')).toBeLessThan(body.indexOf('id="inspectorEdgeToggle"'))
     expect(body).toContain('class="chat-actions"')
     expect(body).toContain('class="brand-avatar avatar-cartoon"')
     expect(body).toContain('class="brand-avatar-image"')
+    expect(body).toContain('class="rail-avatar-image"')
     expect(body).toContain('src="/static/assets/cyrene-cartoon-avatar.png"')
     expect(body).toContain('decoding="async"')
     expect(body).toContain('rows="1"')
@@ -140,11 +143,19 @@ describe('startWebServer', () => {
     expect(body).toContain('@keyframes prismFocus')
     expect(body).toContain('@keyframes statusFlow')
     expect(body).toContain('linear-gradient(135deg, #e2eef9 0%, #f0f7ff 45%, #ffeaf6 100%)')
+    expect(body).toContain('body.theme-dark')
+    expect(body).toContain('--dark-panel')
+    expect(body).toContain('.session-menu')
+    expect(body).toContain('.session-action.danger')
+    expect(body).toContain('.theme-toggle')
+    expect(body).toContain('.rail-avatar-button')
+    expect(body).toContain('.rail-avatar-image')
     expect(body).toContain('box-shadow: none')
     expect(body).toMatch(/\.sidebar,\n\.chat-shell,\n\.inspector \{[\s\S]*box-shadow: none/)
     expect(body).toMatch(/\.left-resize-handle \{[\s\S]*background: transparent/)
     expect(body).toMatch(/body\.is-resizing-left \.left-resize-handle \{[\s\S]*background: linear-gradient/)
     expect(body).toMatch(/\.workspace-picker \{[\s\S]*position: absolute/)
+    expect(body).toMatch(/\.session-menu \{[\s\S]*position: fixed/)
     expect(body).toMatch(/\.workspace-change-button \{[\s\S]*border-radius: 999px/)
     expect(body).not.toContain('.sidebar-card')
     expect(body).not.toContain('.brand-avatar::after')
@@ -286,6 +297,23 @@ describe('startWebServer', () => {
     expect(body).toContain('appendAssistantMessage')
     expect(body).toContain('loadSessions')
     expect(body).toContain('/api/sessions')
+    expect(body).toContain('themeToggle')
+    expect(body).toContain('localStorage.getItem(THEME_STORAGE_KEY)')
+    expect(body).toContain('setTheme(nextTheme)')
+    expect(body).toContain('openSessionMenuId')
+    expect(body).toContain('sessionMenuPosition')
+    expect(body).toContain('getBoundingClientRect')
+    expect(body).toContain('window.innerHeight')
+    expect(body).toContain('const menuHeight = 96')
+    expect(body).toContain("sessionHistory?.addEventListener('scroll'")
+    expect(body).toContain("window.addEventListener('resize'")
+    expect(body).toContain("!state.sessions.some((session) => session.id === state.openSessionMenuId)")
+    expect(body).toContain('deleteSession(session.id)')
+    expect(body).toContain('toggleSessionPinned(session)')
+    expect(body).toContain('session-menu')
+    expect(body).toContain('session-menu-button')
+    expect(body).toContain('session-action danger')
+    expect(body).toContain('createIcon(')
     expect(body).toContain('loadWorkspaces')
     expect(body).toContain('/api/workspaces')
     expect(body).toContain('workspaceId')
@@ -313,6 +341,7 @@ describe('startWebServer', () => {
     expect(body).toContain('text.trim()')
     expect(body).toContain('message-content')
     expect(body).toContain('Cyrene')
+    expect(body).not.toContain("preview.className = 'session-preview'")
     expect(body).not.toContain('Ask Prism')
   })
 
@@ -794,6 +823,151 @@ describe('startWebServer', () => {
       { role: 'assistant', content: 'first answer' },
       { role: 'user', content: 'continue' }
     ])
+  })
+
+  it('updates pinned state through PATCH /api/sessions/:id', async () => {
+    const server = await startServer(async (): Promise<ModelResponse> => ({ content: 'pin answer', toolCalls: [] }))
+
+    const createResponse = await fetch(`${server.url}/api/runs`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ message: 'pin through api' })
+    })
+    expect(createResponse.status).toBe(202)
+    const createBody = (await createResponse.json()) as { runId: string; sessionId: string }
+    await readRunEventStream(`${server.url}/api/runs/${createBody.runId}/events`)
+
+    const patchResponse = await fetch(`${server.url}/api/sessions/${createBody.sessionId}`, {
+      method: 'PATCH',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ pinned: true })
+    })
+
+    expect(patchResponse.status).toBe(200)
+    await expect(patchResponse.json()).resolves.toEqual({
+      session: expect.objectContaining({ id: createBody.sessionId, pinned: true })
+    })
+
+    const listResponse = await fetch(`${server.url}/api/sessions`)
+    expect(listResponse.status).toBe(200)
+    await expect(listResponse.json()).resolves.toEqual({
+      sessions: [
+        expect.objectContaining({ id: createBody.sessionId, pinned: true })
+      ]
+    })
+  })
+
+  it('validates PATCH /api/sessions/:id bodies and missing sessions', async () => {
+    const server = await startServer()
+
+    const invalidJsonResponse = await fetch(`${server.url}/api/sessions/missing`, {
+      method: 'PATCH',
+      headers: { 'content-type': 'application/json' },
+      body: '{'
+    })
+    expect(invalidJsonResponse.status).toBe(400)
+    await expect(invalidJsonResponse.json()).resolves.toEqual({ error: 'Invalid JSON body.' })
+
+    const invalidPinnedResponse = await fetch(`${server.url}/api/sessions/missing`, {
+      method: 'PATCH',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ pinned: 'yes' })
+    })
+    expect(invalidPinnedResponse.status).toBe(400)
+    await expect(invalidPinnedResponse.json()).resolves.toEqual({ error: 'pinned must be a boolean.' })
+
+    const missingResponse = await fetch(`${server.url}/api/sessions/missing`, {
+      method: 'PATCH',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ pinned: true })
+    })
+    expect(missingResponse.status).toBe(404)
+    await expect(missingResponse.json()).resolves.toEqual({ error: 'Session not found.' })
+
+    const malformedGetResponse = await fetch(`${server.url}/api/sessions/%`)
+    expect(malformedGetResponse.status).toBe(400)
+    await expect(malformedGetResponse.json()).resolves.toEqual({ error: 'Invalid session id.' })
+
+    const malformedPatchResponse = await fetch(`${server.url}/api/sessions/%`, {
+      method: 'PATCH',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ pinned: true })
+    })
+    expect(malformedPatchResponse.status).toBe(400)
+    await expect(malformedPatchResponse.json()).resolves.toEqual({ error: 'Invalid session id.' })
+
+    const unsafePatchResponse = await fetch(`${server.url}/api/sessions/..%2Foutside`, {
+      method: 'PATCH',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ pinned: true })
+    })
+    expect(unsafePatchResponse.status).toBe(400)
+    await expect(unsafePatchResponse.json()).resolves.toEqual({ error: 'Invalid session id.' })
+
+    const unsupportedMethodResponse = await fetch(`${server.url}/api/sessions/%`, { method: 'POST' })
+    expect(unsupportedMethodResponse.status).toBe(404)
+    await expect(unsupportedMethodResponse.json()).resolves.toEqual({ error: 'Not found.' })
+  })
+
+  it('deletes sessions through DELETE /api/sessions/:id', async () => {
+    const server = await startServer(async (): Promise<ModelResponse> => ({ content: 'delete answer', toolCalls: [] }))
+
+    const createResponse = await fetch(`${server.url}/api/runs`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ message: 'delete through api' })
+    })
+    expect(createResponse.status).toBe(202)
+    const createBody = (await createResponse.json()) as { runId: string; sessionId: string }
+    await readRunEventStream(`${server.url}/api/runs/${createBody.runId}/events`)
+
+    const deleteResponse = await fetch(`${server.url}/api/sessions/${createBody.sessionId}`, { method: 'DELETE' })
+    expect(deleteResponse.status).toBe(200)
+    await expect(deleteResponse.json()).resolves.toEqual({ deleted: true })
+
+    const listResponse = await fetch(`${server.url}/api/sessions`)
+    expect(listResponse.status).toBe(200)
+    await expect(listResponse.json()).resolves.toEqual({ sessions: [] })
+
+    const secondDeleteResponse = await fetch(`${server.url}/api/sessions/${createBody.sessionId}`, { method: 'DELETE' })
+    expect(secondDeleteResponse.status).toBe(404)
+    await expect(secondDeleteResponse.json()).resolves.toEqual({ error: 'Session not found.' })
+
+    const malformedDeleteResponse = await fetch(`${server.url}/api/sessions/%`, { method: 'DELETE' })
+    expect(malformedDeleteResponse.status).toBe(400)
+    await expect(malformedDeleteResponse.json()).resolves.toEqual({ error: 'Invalid session id.' })
+
+    const unsafeDeleteResponse = await fetch(`${server.url}/api/sessions/..%2Foutside`, { method: 'DELETE' })
+    expect(unsafeDeleteResponse.status).toBe(400)
+    await expect(unsafeDeleteResponse.json()).resolves.toEqual({ error: 'Invalid session id.' })
+  })
+
+  it('returns a controlled error when deleting a symlinked session file', async () => {
+    const cwd = await createTempCwd()
+    const server = await startWebServer({
+      cwd,
+      host: '127.0.0.1',
+      port: 0,
+      callModel: async (): Promise<ModelResponse> => ({ content: 'symlink answer', toolCalls: [] })
+    })
+    servers.push(server)
+
+    const createResponse = await fetch(`${server.url}/api/runs`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ message: 'delete symlink through api' })
+    })
+    expect(createResponse.status).toBe(202)
+    const createBody = (await createResponse.json()) as { runId: string; sessionId: string }
+    await readRunEventStream(`${server.url}/api/runs/${createBody.runId}/events`)
+
+    const sessionPath = join(cwd, '.cc-local', 'sessions', `${createBody.sessionId}.jsonl`)
+    await rm(sessionPath)
+    await symlink(tmpdir(), sessionPath)
+
+    const deleteResponse = await fetch(`${server.url}/api/sessions/${createBody.sessionId}`, { method: 'DELETE' })
+    expect(deleteResponse.status).toBe(409)
+    await expect(deleteResponse.json()).resolves.toEqual({ error: 'Session storage is invalid.' })
   })
 
   it('rejects client-supplied assistant messages', async () => {
