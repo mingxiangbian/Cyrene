@@ -14,8 +14,10 @@ import type { CallModelInput, ChatMessage, ChatRole, ModelResponse } from '../ll
 import {
   appendSessionEvent,
   createSession,
+  deleteSession,
   listSessions,
   loadSession,
+  updateSessionPinned,
   type SessionIndexItem
 } from '../session-store.js'
 import { buildAgentRuntime } from './prompt-context.js'
@@ -173,9 +175,25 @@ async function routeRequest(
   }
 
   const sessionMatch = /^\/api\/sessions\/([^/]+)$/.exec(url.pathname)
-  if (request.method === 'GET' && sessionMatch !== null) {
-    await getSession(response, context, decodeURIComponent(sessionMatch[1]))
-    return
+  if (sessionMatch !== null) {
+    if (request.method === 'GET') {
+      const sessionId = decodeSessionId(response, sessionMatch[1])
+      if (sessionId === undefined) return
+      await getSession(response, context, sessionId)
+      return
+    }
+    if (request.method === 'PATCH') {
+      const sessionId = decodeSessionId(response, sessionMatch[1])
+      if (sessionId === undefined) return
+      await patchSession(request, response, context, sessionId)
+      return
+    }
+    if (request.method === 'DELETE') {
+      const sessionId = decodeSessionId(response, sessionMatch[1])
+      if (sessionId === undefined) return
+      await deleteSessionRoute(response, context, sessionId)
+      return
+    }
   }
 
   const eventMatch = /^\/api\/runs\/([^/]+)\/events$/.exec(url.pathname)
@@ -390,6 +408,75 @@ async function getSession(response: ServerResponse, context: WebServerContext, s
   })
 }
 
+async function patchSession(
+  request: IncomingMessage,
+  response: ServerResponse,
+  context: WebServerContext,
+  sessionId: string
+): Promise<void> {
+  let body: unknown
+  try {
+    body = JSON.parse(await readRequestBody(request))
+  } catch {
+    writeJson(response, 400, { error: 'Invalid JSON body.' })
+    return
+  }
+
+  if (!isObject(body) || typeof body.pinned !== 'boolean') {
+    writeJson(response, 400, { error: 'pinned must be a boolean.' })
+    return
+  }
+
+  let session: SessionIndexItem | null
+  try {
+    session = await updateSessionPinned({
+      cwd: context.cwd,
+      sessionId,
+      pinned: body.pinned
+    })
+  } catch (error) {
+    if (isUnsafeSessionError(error)) {
+      writeJson(response, 400, { error: 'Invalid session id.' })
+      return
+    }
+    throw error
+  }
+
+  if (session === null) {
+    writeJson(response, 404, { error: 'Session not found.' })
+    return
+  }
+
+  writeJson(response, 200, { session })
+}
+
+async function deleteSessionRoute(
+  response: ServerResponse,
+  context: WebServerContext,
+  sessionId: string
+): Promise<void> {
+  let deleted: boolean
+  try {
+    deleted = await deleteSession({
+      cwd: context.cwd,
+      sessionId
+    })
+  } catch (error) {
+    if (isUnsafeSessionError(error)) {
+      writeJson(response, 400, { error: 'Invalid session id.' })
+      return
+    }
+    throw error
+  }
+
+  if (!deleted) {
+    writeJson(response, 404, { error: 'Session not found.' })
+    return
+  }
+
+  writeJson(response, 200, { deleted: true })
+}
+
 function emit(record: RunRecord, event: WebRunEvent): void {
   record.events.push(event)
 
@@ -510,6 +597,15 @@ function decodeRouteComponent(response: ServerResponse, value: string, label: st
     return decodeURIComponent(value)
   } catch {
     writeJson(response, 400, { error: `Invalid ${label}: ${value}` })
+    return undefined
+  }
+}
+
+function decodeSessionId(response: ServerResponse, value: string): string | undefined {
+  try {
+    return decodeURIComponent(value)
+  } catch {
+    writeJson(response, 400, { error: 'Invalid session id.' })
     return undefined
   }
 }

@@ -796,6 +796,123 @@ describe('startWebServer', () => {
     ])
   })
 
+  it('updates pinned state through PATCH /api/sessions/:id', async () => {
+    const server = await startServer(async (): Promise<ModelResponse> => ({ content: 'pin answer', toolCalls: [] }))
+
+    const createResponse = await fetch(`${server.url}/api/runs`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ message: 'pin through api' })
+    })
+    expect(createResponse.status).toBe(202)
+    const createBody = (await createResponse.json()) as { runId: string; sessionId: string }
+    await readRunEventStream(`${server.url}/api/runs/${createBody.runId}/events`)
+
+    const patchResponse = await fetch(`${server.url}/api/sessions/${createBody.sessionId}`, {
+      method: 'PATCH',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ pinned: true })
+    })
+
+    expect(patchResponse.status).toBe(200)
+    await expect(patchResponse.json()).resolves.toEqual({
+      session: expect.objectContaining({ id: createBody.sessionId, pinned: true })
+    })
+
+    const listResponse = await fetch(`${server.url}/api/sessions`)
+    expect(listResponse.status).toBe(200)
+    await expect(listResponse.json()).resolves.toEqual({
+      sessions: [
+        expect.objectContaining({ id: createBody.sessionId, pinned: true })
+      ]
+    })
+  })
+
+  it('validates PATCH /api/sessions/:id bodies and missing sessions', async () => {
+    const server = await startServer()
+
+    const invalidJsonResponse = await fetch(`${server.url}/api/sessions/missing`, {
+      method: 'PATCH',
+      headers: { 'content-type': 'application/json' },
+      body: '{'
+    })
+    expect(invalidJsonResponse.status).toBe(400)
+    await expect(invalidJsonResponse.json()).resolves.toEqual({ error: 'Invalid JSON body.' })
+
+    const invalidPinnedResponse = await fetch(`${server.url}/api/sessions/missing`, {
+      method: 'PATCH',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ pinned: 'yes' })
+    })
+    expect(invalidPinnedResponse.status).toBe(400)
+    await expect(invalidPinnedResponse.json()).resolves.toEqual({ error: 'pinned must be a boolean.' })
+
+    const missingResponse = await fetch(`${server.url}/api/sessions/missing`, {
+      method: 'PATCH',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ pinned: true })
+    })
+    expect(missingResponse.status).toBe(404)
+    await expect(missingResponse.json()).resolves.toEqual({ error: 'Session not found.' })
+
+    const malformedGetResponse = await fetch(`${server.url}/api/sessions/%`)
+    expect(malformedGetResponse.status).toBe(400)
+    await expect(malformedGetResponse.json()).resolves.toEqual({ error: 'Invalid session id.' })
+
+    const malformedPatchResponse = await fetch(`${server.url}/api/sessions/%`, {
+      method: 'PATCH',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ pinned: true })
+    })
+    expect(malformedPatchResponse.status).toBe(400)
+    await expect(malformedPatchResponse.json()).resolves.toEqual({ error: 'Invalid session id.' })
+
+    const unsafePatchResponse = await fetch(`${server.url}/api/sessions/..%2Foutside`, {
+      method: 'PATCH',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ pinned: true })
+    })
+    expect(unsafePatchResponse.status).toBe(400)
+    await expect(unsafePatchResponse.json()).resolves.toEqual({ error: 'Invalid session id.' })
+
+    const unsupportedMethodResponse = await fetch(`${server.url}/api/sessions/%`, { method: 'POST' })
+    expect(unsupportedMethodResponse.status).toBe(404)
+    await expect(unsupportedMethodResponse.json()).resolves.toEqual({ error: 'Not found.' })
+  })
+
+  it('deletes sessions through DELETE /api/sessions/:id', async () => {
+    const server = await startServer(async (): Promise<ModelResponse> => ({ content: 'delete answer', toolCalls: [] }))
+
+    const createResponse = await fetch(`${server.url}/api/runs`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ message: 'delete through api' })
+    })
+    expect(createResponse.status).toBe(202)
+    const createBody = (await createResponse.json()) as { runId: string; sessionId: string }
+    await readRunEventStream(`${server.url}/api/runs/${createBody.runId}/events`)
+
+    const deleteResponse = await fetch(`${server.url}/api/sessions/${createBody.sessionId}`, { method: 'DELETE' })
+    expect(deleteResponse.status).toBe(200)
+    await expect(deleteResponse.json()).resolves.toEqual({ deleted: true })
+
+    const listResponse = await fetch(`${server.url}/api/sessions`)
+    expect(listResponse.status).toBe(200)
+    await expect(listResponse.json()).resolves.toEqual({ sessions: [] })
+
+    const secondDeleteResponse = await fetch(`${server.url}/api/sessions/${createBody.sessionId}`, { method: 'DELETE' })
+    expect(secondDeleteResponse.status).toBe(404)
+    await expect(secondDeleteResponse.json()).resolves.toEqual({ error: 'Session not found.' })
+
+    const malformedDeleteResponse = await fetch(`${server.url}/api/sessions/%`, { method: 'DELETE' })
+    expect(malformedDeleteResponse.status).toBe(400)
+    await expect(malformedDeleteResponse.json()).resolves.toEqual({ error: 'Invalid session id.' })
+
+    const unsafeDeleteResponse = await fetch(`${server.url}/api/sessions/..%2Foutside`, { method: 'DELETE' })
+    expect(unsafeDeleteResponse.status).toBe(400)
+    await expect(unsafeDeleteResponse.json()).resolves.toEqual({ error: 'Invalid session id.' })
+  })
+
   it('rejects client-supplied assistant messages', async () => {
     const callModel = vi.fn(async (): Promise<ModelResponse> => ({ content: 'unused', toolCalls: [] }))
     const server = await startServer(callModel)
