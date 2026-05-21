@@ -174,7 +174,7 @@ export async function runAgentLoop(input: RunAgentLoopInput): Promise<RunAgentLo
           name,
           result.ok,
           Date.now() - toolStartedAt,
-          summarizeToolResult(result.content, result.ok)
+          summarizeToolResult(name, result.content, result.ok)
         )
       )
 
@@ -256,7 +256,14 @@ function notifyObserver(action: () => void): void {
   }
 }
 
-function summarizeToolResult(content: string, ok: boolean): string {
+function summarizeToolResult(name: string, content: string, ok: boolean): string {
+  if (ok && name === 'generate_image') {
+    const relativePath = content.match(/^\s*relative path:\s*(.+)$/m)?.[1]
+    if (relativePath !== undefined) {
+      return `Generated image: ${relativePath}`
+    }
+  }
+
   return truncateOneLine(content, ok ? 60 : 80)
 }
 

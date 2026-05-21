@@ -1,3 +1,4 @@
+import { createServer, type Server as HttpServer } from 'node:http'
 import { mkdir, mkdtemp, readFile, realpath, rm, symlink, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -7,11 +8,19 @@ import type { CallModelInput, ModelResponse } from '../src/llm-client.js'
 import { startWebServer, type WebServerHandle } from '../src/web/server.js'
 
 const servers: WebServerHandle[] = []
+const mockT2IServers: HttpServer[] = []
 const tempDirs: string[] = []
 
 afterEach(async () => {
-  await Promise.all(servers.splice(0).map((server) => server.close()))
-  await Promise.all(tempDirs.splice(0).map((dir) => rm(dir, { recursive: true, force: true })))
+  try {
+    await Promise.all([
+      ...servers.splice(0).map((server) => server.close()),
+      ...mockT2IServers.splice(0).map(closeHttpServer)
+    ])
+    await Promise.all(tempDirs.splice(0).map((dir) => rm(dir, { recursive: true, force: true })))
+  } finally {
+    vi.unstubAllEnvs()
+  }
 })
 
 describe('startWebServer', () => {
@@ -700,6 +709,60 @@ describe('startWebServer', () => {
     ]))
   })
 
+  it('lets Web runs call generate_image in the selected workspace', async () => {
+    const cwd = await createTempCwd()
+    await mkdir(join(cwd, 'workspace', 'project-a'))
+    const mockT2IUrl = await startMockT2IServer((body) => ({
+      model: 'majicmixRealistic_v7',
+      images: [{
+        path: join(body.output_dir, 'web-image.png'),
+        seed: 9,
+        width: 512,
+        height: 768
+      }]
+    }))
+    vi.stubEnv('T2I_BASE_URL', mockT2IUrl)
+    const callModel = vi.fn(async (): Promise<ModelResponse> => {
+      if (callModel.mock.calls.length === 1) {
+        return {
+          content: '',
+          toolCalls: [{
+            id: 'call-generate-web-image',
+            type: 'function',
+            function: {
+              name: 'generate_image',
+              arguments: JSON.stringify({ prompt: 'portrait photo', seed: 9 })
+            }
+          }]
+        }
+      }
+
+      return { content: 'image generated', toolCalls: [] }
+    })
+    const server = await startWebServer({
+      cwd,
+      host: '127.0.0.1',
+      port: 0,
+      callModel
+    })
+    servers.push(server)
+
+    const createResponse = await fetch(`${server.url}/api/runs`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ message: 'generate image', workspaceId: 'project-a' })
+    })
+    expect(createResponse.status).toBe(202)
+    const createBody = (await createResponse.json()) as { runId: string }
+
+    const { body: streamBody } = await readRunEventStream(`${server.url}/api/runs/${createBody.runId}/events`)
+
+    expect(streamBody).toContain('"type":"tool_start","name":"generate_image"')
+    expect(streamBody).toContain('generated-images/web-image.png')
+    expect(streamBody).toContain('"type":"final","text":"image generated"')
+    expect(callModel).toHaveBeenCalledTimes(2)
+  })
+
   it('persists selected workspace ids and rejects cross-workspace resume', async () => {
     const cwd = await createTempCwd()
     await mkdir(join(cwd, 'workspace', 'project-a'))
@@ -1284,6 +1347,54 @@ async function createTempCwdWithoutWorkspace(): Promise<string> {
   const cwd = await realpath(await mkdtemp(join(tmpdir(), 'cc-local-web-server-')))
   tempDirs.push(cwd)
   return cwd
+}
+
+async function startMockT2IServer(
+  respond: (body: { output_dir: string }) => unknown
+): Promise<string> {
+  const server = createServer(async (request, response) => {
+    if (request.method !== 'POST' || request.url !== '/generate') {
+      response.writeHead(404, { 'content-type': 'application/json' })
+      response.end(JSON.stringify({ error: 'not found' }))
+      return
+    }
+
+    const chunks: Buffer[] = []
+    for await (const chunk of request) {
+      chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk))
+    }
+
+    const body = JSON.parse(Buffer.concat(chunks).toString('utf8')) as { output_dir: string }
+    response.writeHead(200, { 'content-type': 'application/json' })
+    response.end(JSON.stringify(respond(body)))
+  })
+
+  await new Promise<void>((resolve, reject) => {
+    server.once('error', reject)
+    server.listen(0, '127.0.0.1', () => {
+      server.off('error', reject)
+      resolve()
+    })
+  })
+  mockT2IServers.push(server)
+  const address = server.address()
+  if (address === null || typeof address === 'string') {
+    throw new Error('Mock T2I server did not bind to a TCP port.')
+  }
+
+  return `http://127.0.0.1:${address.port}`
+}
+
+async function closeHttpServer(server: HttpServer): Promise<void> {
+  await new Promise<void>((resolve, reject) => {
+    server.close((error) => {
+      if (error) {
+        reject(error)
+        return
+      }
+      resolve()
+    })
+  })
 }
 
 async function readRunEventStream(url: string): Promise<{ response: Response; body: string }> {
