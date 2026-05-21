@@ -258,9 +258,12 @@ function notifyObserver(action: () => void): void {
 
 function summarizeToolResult(name: string, content: string, ok: boolean): string {
   if (ok && name === 'generate_image') {
-    const relativePath = content.match(/^\s*relative path:\s*(.+)$/m)?.[1]
-    if (relativePath !== undefined) {
-      return `Generated image: ${relativePath}`
+    const relativePaths = [...content.matchAll(/^\s*relative path:\s*(.+)$/gm)]
+      .map((match) => match[1])
+      .filter((path): path is string => path !== undefined)
+    if (relativePaths.length > 0) {
+      const imageWord = relativePaths.length === 1 ? 'image' : 'images'
+      return truncateOneLine(`Generated ${imageWord}: ${relativePaths.join(', ')}`, 120)
     }
   }
 

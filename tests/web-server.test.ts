@@ -712,15 +712,19 @@ describe('startWebServer', () => {
   it('lets Web runs call generate_image in the selected workspace', async () => {
     const cwd = await createTempCwd()
     await mkdir(join(cwd, 'workspace', 'project-a'))
-    const mockT2IUrl = await startMockT2IServer((body) => ({
-      model: 'majicmixRealistic_v7',
-      images: [{
-        path: join(body.output_dir, 'web-image.png'),
-        seed: 9,
-        width: 512,
-        height: 768
-      }]
-    }))
+    const t2iRequests: MockT2IRequest[] = []
+    const mockT2IUrl = await startMockT2IServer((body) => {
+      t2iRequests.push(body)
+      return {
+        model: 'majicmixRealistic_v7',
+        images: [{
+          path: join(body.output_dir, 'web-image.png'),
+          seed: 9,
+          width: 512,
+          height: 768
+        }]
+      }
+    })
     vi.stubEnv('T2I_BASE_URL', mockT2IUrl)
     const callModel = vi.fn(async (): Promise<ModelResponse> => {
       if (callModel.mock.calls.length === 1) {
@@ -761,6 +765,19 @@ describe('startWebServer', () => {
     expect(streamBody).toContain('generated-images/web-image.png')
     expect(streamBody).toContain('"type":"final","text":"image generated"')
     expect(callModel).toHaveBeenCalledTimes(2)
+    const expectedOutputDir = await realpath(join(cwd, 'workspace', 'project-a', 'generated-images'))
+    expect(t2iRequests).toEqual([{
+      prompt: 'portrait photo',
+      negative_prompt: '',
+      width: 512,
+      height: 768,
+      steps: 30,
+      cfg_scale: 7,
+      count: 1,
+      output_dir: expectedOutputDir,
+      seed: 9
+    }])
+    await expect(realpath(join(cwd, 'workspace', 'generated-images'))).rejects.toThrow()
   })
 
   it('persists selected workspace ids and rejects cross-workspace resume', async () => {
@@ -1349,9 +1366,19 @@ async function createTempCwdWithoutWorkspace(): Promise<string> {
   return cwd
 }
 
-async function startMockT2IServer(
-  respond: (body: { output_dir: string }) => unknown
-): Promise<string> {
+interface MockT2IRequest {
+  prompt: string
+  negative_prompt: string
+  width: number
+  height: number
+  steps: number
+  cfg_scale: number
+  count: number
+  output_dir: string
+  seed?: number
+}
+
+async function startMockT2IServer(respond: (body: MockT2IRequest) => unknown): Promise<string> {
   const server = createServer(async (request, response) => {
     if (request.method !== 'POST' || request.url !== '/generate') {
       response.writeHead(404, { 'content-type': 'application/json' })
@@ -1364,7 +1391,7 @@ async function startMockT2IServer(
       chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk))
     }
 
-    const body = JSON.parse(Buffer.concat(chunks).toString('utf8')) as { output_dir: string }
+    const body = JSON.parse(Buffer.concat(chunks).toString('utf8')) as MockT2IRequest
     response.writeHead(200, { 'content-type': 'application/json' })
     response.end(JSON.stringify(respond(body)))
   })

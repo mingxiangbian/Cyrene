@@ -55,6 +55,38 @@ const askTool: Tool<{ question: string }> = {
   }
 }
 
+const generateImageSummaryTool: Tool<{ prompt: string }> = {
+  name: 'generate_image',
+  description: 'Generate image summary fixture.',
+  parameters: {
+    type: 'object',
+    properties: { prompt: { type: 'string' } },
+    required: ['prompt'],
+    additionalProperties: false
+  },
+  schema: z.object({ prompt: z.string() }),
+  isReadonly: false,
+  isDestructive: false,
+  isConcurrencySafe: false,
+  needsUserInteraction: false,
+  async execute() {
+    return {
+      ok: true,
+      content: [
+        'Generated 2 images with test-model.',
+        '1. absolute path: /tmp/project/generated-images/one.png',
+        '   relative path: generated-images/one.png',
+        '   seed: 1',
+        '   size: 512x768',
+        '2. absolute path: /tmp/project/generated-images/two.png',
+        '   relative path: generated-images/two.png',
+        '   seed: 2',
+        '   size: 512x768'
+      ].join('\n')
+    }
+  }
+}
+
 const failingWebSearchTool: Tool<{ query: string }> = {
   name: 'web_search',
   description: 'Failing web search.',
@@ -583,6 +615,49 @@ describe('runAgentLoop', () => {
       'thinking:start',
       'thinking:stop',
       'response'
+    ])
+  })
+
+  it('summarizes successful generate_image results with all relative image paths', async () => {
+    const toolResults: string[] = []
+    let calls = 0
+    const observer: AgentObserver = {
+      onThinkingStart() {},
+      onThinkingStop() {},
+      onToolCallStart() {},
+      onToolCallResult(name, ok, _durationMs, summary) {
+        toolResults.push(`${name}:${ok}:${summary}`)
+      },
+      onResponse() {
+      }
+    }
+
+    await runAgentLoop({
+      config: createDefaultConfig('/tmp/project'),
+      systemPrompt: 'system',
+      userPrompt: 'generate images',
+      tools: [generateImageSummaryTool],
+      observer,
+      callModel: async (): Promise<ModelResponse> => {
+        calls += 1
+        if (calls === 1) {
+          return {
+            content: '',
+            toolCalls: [
+              {
+                id: 'call-generate',
+                type: 'function',
+                function: { name: 'generate_image', arguments: '{"prompt":"portrait"}' }
+              }
+            ]
+          }
+        }
+        return { content: 'done after images', toolCalls: [] }
+      }
+    })
+
+    expect(toolResults).toEqual([
+      'generate_image:true:Generated images: generated-images/one.png, generated-images/two.png'
     ])
   })
 
