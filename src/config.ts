@@ -7,9 +7,15 @@ export interface ModelConfig {
   temperature: number
 }
 
+export interface T2IConfig {
+  baseUrl: string
+  outputDir: string
+}
+
 export interface AppConfig {
   cwd: string
   model: ModelConfig
+  t2i: T2IConfig
   maxToolCallsPerTurn: number
   contextWindowTokens: number
   autoCompactThreshold: number
@@ -43,6 +49,10 @@ export function createDefaultConfig(cwd: string): AppConfig {
       baseUrl: process.env.CC_LOCAL_BASE_URL ?? 'http://127.0.0.1:8080/v1',
       model: process.env.CC_LOCAL_MODEL ?? 'Qwen3.5-9B-MLX-4bit',
       temperature: 0
+    },
+    t2i: {
+      baseUrl: process.env.T2I_BASE_URL ?? 'http://127.0.0.1:7861',
+      outputDir: process.env.T2I_OUTPUT_DIR ?? 'generated-images'
     },
     maxToolCallsPerTurn: 10,
     contextWindowTokens: 256_000,

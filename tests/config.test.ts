@@ -16,6 +16,23 @@ describe('createDefaultConfig', () => {
     expect(config.model.temperature).toBe(0)
   })
 
+  it('uses local T2I defaults', () => {
+    const config = createDefaultConfig('/tmp/project')
+
+    expect(config.t2i.baseUrl).toBe('http://127.0.0.1:7861')
+    expect(config.t2i.outputDir).toBe('generated-images')
+  })
+
+  it('uses local T2I environment overrides when present', () => {
+    vi.stubEnv('T2I_BASE_URL', 'http://127.0.0.1:9998')
+    vi.stubEnv('T2I_OUTPUT_DIR', 'custom-images')
+
+    const config = createDefaultConfig('/tmp/project')
+
+    expect(config.t2i.baseUrl).toBe('http://127.0.0.1:9998')
+    expect(config.t2i.outputDir).toBe('custom-images')
+  })
+
   it('keeps v1 safety and context limits explicit', () => {
     const config = createDefaultConfig('/tmp/project')
 
