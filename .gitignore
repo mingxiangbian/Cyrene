@@ -18,3 +18,4 @@ Qwen3.5-9B-MLX-4bit/
 # Local secrets
 .env
 .env.*
+!.env.example

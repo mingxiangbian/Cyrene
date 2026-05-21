@@ -4,9 +4,14 @@
   "private": true,
   "type": "module",
   "bin": { "cc-local": "src/main.ts" },
+  "engines": {
+    "node": ">=20",
+    "npm": ">=10"
+  },
   "scripts": {
     "setup": "node scripts/setup-local-state.mjs",
     "dev": "tsx src/main.ts",
+    "benchmark:tool-calling": "python benchmarks/manual_tool_calling_benchmark.py",
     "test": "vitest run",
     "typecheck": "tsc --noEmit"
   },

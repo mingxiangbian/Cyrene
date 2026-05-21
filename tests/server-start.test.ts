@@ -8,4 +8,15 @@ describe('server/start.sh', () => {
     expect(script).toMatch(/-m mlx_lm server\s+\\/)
     expect(script).not.toMatch(/-m mlx_lm serve\s+\\/)
   })
+
+  it('allows runtime settings to be overridden by environment variables', async () => {
+    const script = await readFile('server/start.sh', 'utf8')
+
+    expect(script).toContain('MODEL_PATH="${MODEL_PATH:-')
+    expect(script).toContain('HOST="${HOST:-127.0.0.1}"')
+    expect(script).toContain('PORT="${PORT:-8080}"')
+    expect(script).toContain('PYTHON="${PYTHON:-')
+    expect(script).toContain('--host "${HOST}"')
+    expect(script).toContain('--port "${PORT}"')
+  })
 })
