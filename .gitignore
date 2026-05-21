@@ -7,8 +7,10 @@ dist/
 coverage/
 .worktrees/
 .superpowers/
+.cc-local/
 data/
 workspace/
+docs/superpowers/plans/
 
 # Local model weights and downloaded model artifacts
 Qwen3.5-9B-MLX-4bit/

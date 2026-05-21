@@ -5,6 +5,7 @@
   "type": "module",
   "bin": { "cc-local": "src/main.ts" },
   "scripts": {
+    "setup": "node scripts/setup-local-state.mjs",
     "dev": "tsx src/main.ts",
     "test": "vitest run",
     "typecheck": "tsc --noEmit"
