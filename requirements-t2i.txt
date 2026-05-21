@@ -1,5 +1,6 @@
 diffusers
-transformers
+# Use a separate virtualenv from the mlx-lm server; SD1.5 single-file loading currently needs Transformers 4.x.
+transformers>=4.41.2,<5
 accelerate
 safetensors
 Pillow
