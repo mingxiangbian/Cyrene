@@ -16,7 +16,9 @@ describe('web static helpers', () => {
   it('keeps long user messages fully expanded inside the chat bubble', () => {
     const css = readFileSync(new URL('../src/web/static/styles.css', import.meta.url), 'utf8')
 
+    expect(css).toMatch(/\.message-group\s*\{[\s\S]*?flex-shrink:\s*0;/)
     expect(css).toMatch(/\.message\s*\{[\s\S]*?align-items:\s*flex-start;/)
+    expect(css).toMatch(/\.message\s*\{[\s\S]*?flex-shrink:\s*0;/)
     expect(css).toMatch(/\.message-content\s*\{[\s\S]*?display:\s*block;/)
     expect(css).toMatch(/\.message-content\s*\{[\s\S]*?min-width:\s*0;/)
     expect(css).toMatch(/\.message-content\s*\{[\s\S]*?word-break:\s*break-word;/)

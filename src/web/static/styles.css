@@ -702,6 +702,7 @@ button:disabled {
 
 .message-group {
   display: grid;
+  flex-shrink: 0;
   gap: 8px;
   max-width: min(760px, 86%);
 }
@@ -745,6 +746,7 @@ button:disabled {
 .message {
   display: flex;
   align-items: flex-start;
+  flex-shrink: 0;
   max-width: min(760px, 86%);
   min-height: 52px;
   padding: 14px 16px;
