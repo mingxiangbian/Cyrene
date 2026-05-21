@@ -24,6 +24,11 @@ export interface MarkdownFileContent {
   content: string
 }
 
+export interface WorkspaceAsset {
+  path: string
+  contentType: 'image/png'
+}
+
 function publicWorkspace(workspace: WorkspaceInfo): PublicWorkspaceInfo {
   return {
     id: workspace.id,
@@ -62,6 +67,23 @@ function validateMarkdownFileId(fileId: string): string {
     throw new Error('Markdown file id must end with .md')
   }
   return fileId
+}
+
+function validateWorkspaceAssetPath(assetPath: string): string {
+  if (assetPath === '' || assetPath.includes('\\') || isAbsolute(assetPath)) {
+    throw new Error('Invalid workspace asset path.')
+  }
+
+  const segments = assetPath.split('/')
+  if (segments.some((segment) => segment === '' || segment === '.' || segment === '..')) {
+    throw new Error('Invalid workspace asset path.')
+  }
+
+  if (!assetPath.toLowerCase().endsWith('.png')) {
+    throw new Error('Workspace asset must be a PNG file.')
+  }
+
+  return assetPath
 }
 
 async function canonicalWorkspaceRoot(repoCwd: string): Promise<string> {
@@ -181,5 +203,32 @@ export async function readMarkdownFile(workspace: WorkspaceInfo, fileId: string)
   return {
     id,
     content: await readFile(canonicalFile, 'utf8')
+  }
+}
+
+export async function resolveWorkspaceAsset(workspace: WorkspaceInfo, assetPath: string): Promise<WorkspaceAsset> {
+  const safeAssetPath = validateWorkspaceAssetPath(assetPath)
+  const filePath = resolve(workspace.absolutePath, safeAssetPath)
+  const canonicalWorkspace = await realpath(workspace.absolutePath)
+
+  let canonicalFile: string
+  try {
+    canonicalFile = await realpath(filePath)
+  } catch {
+    throw new Error(`Workspace asset does not exist: ${safeAssetPath}`)
+  }
+
+  if (!isInside(canonicalWorkspace, canonicalFile)) {
+    throw new Error('Invalid workspace asset path.')
+  }
+
+  const stats = await lstat(canonicalFile)
+  if (!stats.isFile()) {
+    throw new Error(`Workspace asset is not a regular file: ${safeAssetPath}`)
+  }
+
+  return {
+    path: canonicalFile,
+    contentType: 'image/png'
   }
 }

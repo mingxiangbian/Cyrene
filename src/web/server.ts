@@ -26,6 +26,7 @@ import {
   listMarkdownFiles,
   listWorkspaces,
   readMarkdownFile,
+  resolveWorkspaceAsset,
   resolveWorkspace,
   type WorkspaceInfo
 } from './workspaces.js'
@@ -173,6 +174,15 @@ async function routeRequest(
     const fileId = decodeRouteComponent(response, workspaceMarkdownFileMatch[2], 'Markdown file id')
     if (workspaceId === undefined || fileId === undefined) return
     await getWorkspaceMarkdownFile(response, context, workspaceId, fileId)
+    return
+  }
+
+  const workspaceAssetMatch = /^\/api\/workspaces\/([^/]+)\/files\/(.+)$/.exec(url.pathname)
+  if (request.method === 'GET' && workspaceAssetMatch !== null) {
+    const workspaceId = decodeRouteWorkspaceId(response, workspaceAssetMatch[1])
+    const assetPath = decodeRouteComponent(response, workspaceAssetMatch[2], 'workspace asset path')
+    if (workspaceId === undefined || assetPath === undefined) return
+    await getWorkspaceAsset(response, context, workspaceId, assetPath)
     return
   }
 
@@ -391,6 +401,30 @@ async function getWorkspaceMarkdownFile(
     writeJson(response, 200, { file: await readMarkdownFile(workspace, fileId) })
   } catch (error) {
     writeJson(response, 400, { error: error instanceof Error ? error.message : String(error) })
+  }
+}
+
+async function getWorkspaceAsset(
+  response: ServerResponse,
+  context: WebServerContext,
+  workspaceId: string,
+  assetPath: string
+): Promise<void> {
+  let workspace: WorkspaceInfo
+  try {
+    workspace = await resolveWorkspace(context.cwd, workspaceId)
+  } catch (error) {
+    writeJson(response, 400, { error: error instanceof Error ? error.message : String(error) })
+    return
+  }
+
+  try {
+    const asset = await resolveWorkspaceAsset(workspace, assetPath)
+    response.writeHead(200, { 'content-type': asset.contentType })
+    createReadStream(asset.path).pipe(response)
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error)
+    writeJson(response, message.startsWith('Workspace asset does not exist:') ? 404 : 400, { error: message })
   }
 }
 

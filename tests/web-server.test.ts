@@ -1,4 +1,4 @@
-import { mkdir, mkdtemp, realpath, rm, symlink, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, readFile, realpath, rm, symlink, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it, vi } from 'vitest'
@@ -284,6 +284,97 @@ describe('startWebServer', () => {
 
     expect(response.status).toBe(400)
     expect(body.error).toContain('Invalid Markdown file id')
+  })
+
+  it('serves a workspace PNG asset from a child workspace', async () => {
+    const cwd = await createTempCwd()
+    await mkdir(join(cwd, 'workspace', 'project-a', 'generated-images'), { recursive: true })
+    const expectedBytes = Buffer.from([
+      0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a,
+      0x00, 0x00, 0x00, 0x0d
+    ])
+    const assetPath = join(cwd, 'workspace', 'project-a', 'generated-images', 'one.png')
+    await writeFile(assetPath, expectedBytes)
+    const server = await startWebServer({
+      cwd,
+      host: '127.0.0.1',
+      port: 0,
+      callModel: async (): Promise<ModelResponse> => ({ content: 'unused', toolCalls: [] })
+    })
+    servers.push(server)
+
+    const response = await fetch(`${server.url}/api/workspaces/project-a/files/generated-images/one.png`)
+    const actualBytes = Buffer.from(await response.arrayBuffer())
+
+    expect(response.status).toBe(200)
+    expect(response.headers.get('content-type')).toContain('image/png')
+    expect(actualBytes).toEqual(await readFile(assetPath))
+  })
+
+  it('rejects workspace PNG asset path traversal', async () => {
+    const cwd = await createTempCwd()
+    await writeFile(join(cwd, 'secret.png'), 'not for preview')
+    const server = await startWebServer({
+      cwd,
+      host: '127.0.0.1',
+      port: 0,
+      callModel: async (): Promise<ModelResponse> => ({ content: 'unused', toolCalls: [] })
+    })
+    servers.push(server)
+
+    const response = await fetch(`${server.url}/api/workspaces/@root/files/..%2Fsecret.png`)
+
+    expect(response.status).toBe(400)
+    await expect(response.json()).resolves.toEqual({ error: 'Invalid workspace asset path.' })
+  })
+
+  it('rejects non-PNG workspace assets', async () => {
+    const cwd = await createTempCwd()
+    await writeFile(join(cwd, 'workspace', 'notes.txt'), 'not an image')
+    const server = await startWebServer({
+      cwd,
+      host: '127.0.0.1',
+      port: 0,
+      callModel: async (): Promise<ModelResponse> => ({ content: 'unused', toolCalls: [] })
+    })
+    servers.push(server)
+
+    const response = await fetch(`${server.url}/api/workspaces/@root/files/notes.txt`)
+
+    expect(response.status).toBe(400)
+    await expect(response.json()).resolves.toEqual({ error: 'Workspace asset must be a PNG file.' })
+  })
+
+  it('returns 404 for missing workspace PNG assets', async () => {
+    const cwd = await createTempCwd()
+    const server = await startWebServer({
+      cwd,
+      host: '127.0.0.1',
+      port: 0,
+      callModel: async (): Promise<ModelResponse> => ({ content: 'unused', toolCalls: [] })
+    })
+    servers.push(server)
+
+    const response = await fetch(`${server.url}/api/workspaces/@root/files/missing.png`)
+
+    expect(response.status).toBe(404)
+    await expect(response.json()).resolves.toEqual({ error: 'Workspace asset does not exist: missing.png' })
+  })
+
+  it('rejects encoded absolute-like workspace asset paths', async () => {
+    const cwd = await createTempCwd()
+    const server = await startWebServer({
+      cwd,
+      host: '127.0.0.1',
+      port: 0,
+      callModel: async (): Promise<ModelResponse> => ({ content: 'unused', toolCalls: [] })
+    })
+    servers.push(server)
+
+    const response = await fetch(`${server.url}/api/workspaces/@root/files/%2Ftmp%2Fsecret.png`)
+
+    expect(response.status).toBe(400)
+    await expect(response.json()).resolves.toEqual({ error: 'Invalid workspace asset path.' })
   })
 
   it('serves refined Web UI interaction code from GET /static/app.js', async () => {
