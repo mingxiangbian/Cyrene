@@ -3,6 +3,7 @@ import { bashTool } from './bash.js'
 import { fileEditTool } from './file-edit.js'
 import { fileReadTool } from './file-read.js'
 import { fileWriteTool } from './file-write.js'
+import { generateImageTool } from './generate-image.js'
 import { globTool } from './glob.js'
 import { grepTool } from './grep.js'
 import { webSearchTool } from './web-search.js'
@@ -17,6 +18,7 @@ export function createCoreTools(): Tool<unknown>[] {
     grepTool,
     globTool,
     webSearchTool,
+    generateImageTool,
     askUserTool
   ] as Tool<unknown>[]
 }
