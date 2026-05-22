@@ -313,6 +313,41 @@ describe('generateImageTool', () => {
     ]))
   })
 
+  it('formats disabled image-level Dynamic Thresholding metadata from the worker', async () => {
+    const root = await tempRoot()
+    const imagePath = join(root, 'generated-images', 'safe-dynthres-disabled.png')
+    const fetchMock = vi.fn(async (_url: string, _init: RequestInit) =>
+      mockJsonResponse({
+        model: 'majicmixRealistic_v7',
+        images: [{
+          path: imagePath,
+          seed: 123,
+          width: 1024,
+          height: 1536,
+          dynamic_thresholding: false,
+          dynamic_thresholding_mimic_scale: 7,
+          dynamic_thresholding_percentile: 0.995
+        }]
+      })
+    )
+    vi.stubGlobal('fetch', fetchMock)
+
+    const result = await generateImageTool.execute(
+      { prompt: 'portrait photo' },
+      { config: config(root), trackedFiles: new Set<string>() }
+    )
+
+    expect(result.ok).toBe(true)
+    expect(result.content).toContain('   dynamic thresholding: disabled')
+    expect(result.metadata?.images).toEqual([
+      expect.objectContaining({
+        dynamic_thresholding: false,
+        dynamic_thresholding_mimic_scale: 7,
+        dynamic_thresholding_percentile: 0.995
+      })
+    ])
+  })
+
   it('forces explicit Dynamic Thresholding overrides back to safe values by default', async () => {
     const root = await tempRoot()
     const imagePath = join(root, 'generated-images', 'safe-dynthres.png')
