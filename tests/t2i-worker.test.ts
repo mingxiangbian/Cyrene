@@ -43,7 +43,19 @@ function workerPythonHasPillow(): boolean {
   return result.status === 0
 }
 
+function workerPythonHasTorch(): boolean {
+  const result = spawnSync(workerPython, ['-c', 'import torch'], {
+    cwd: process.cwd(),
+    env: {
+      ...process.env,
+      PYTHONDONTWRITEBYTECODE: '1'
+    }
+  })
+  return result.status === 0
+}
+
 const pillowIt = workerPythonHasPillow() ? it : it.skip
+const torchIt = workerPythonHasTorch() ? it : it.skip
 
 const importWorker = `
 import importlib.util
@@ -79,6 +91,9 @@ print(json.dumps({
     "detail_targets": request["detail_targets"],
     "detail_strength": request["detail_strength"],
     "return_intermediate": request["return_intermediate"],
+    "dynamic_thresholding": request["dynamic_thresholding"],
+    "dynamic_thresholding_mimic_scale": request["dynamic_thresholding_mimic_scale"],
+    "dynamic_thresholding_percentile": request["dynamic_thresholding_percentile"],
 }))
 `)
 
@@ -99,8 +114,57 @@ print(json.dumps({
       detail_enhance: false,
       detail_targets: 'auto',
       detail_strength: 0.35,
-      return_intermediate: false
+      return_intermediate: false,
+      dynamic_thresholding: false,
+      dynamic_thresholding_mimic_scale: 7,
+      dynamic_thresholding_percentile: 0.995
     })
+  })
+
+  it('accepts explicit dynamic thresholding fields', () => {
+    const output = runWorkerSnippet(`${importWorker}
+payload = {
+    "prompt": "portrait",
+    "output_dir": "/tmp/generated-images",
+    "dynamic_thresholding": True,
+    "dynamic_thresholding_mimic_scale": 6,
+    "dynamic_thresholding_percentile": 0.99,
+}
+request, error = worker.validate_payload(payload)
+assert error is None
+print(json.dumps({
+    "dynamic_thresholding": request["dynamic_thresholding"],
+    "dynamic_thresholding_mimic_scale": request["dynamic_thresholding_mimic_scale"],
+    "dynamic_thresholding_percentile": request["dynamic_thresholding_percentile"],
+}))
+`)
+
+    expect(JSON.parse(output)).toEqual({
+      dynamic_thresholding: true,
+      dynamic_thresholding_mimic_scale: 6,
+      dynamic_thresholding_percentile: 0.99
+    })
+  })
+
+  it('rejects invalid dynamic thresholding fields', () => {
+    const output = runWorkerSnippet(`${importWorker}
+cases = [
+    {"prompt": "portrait", "output_dir": "/tmp/generated-images", "dynamic_thresholding": "true"},
+    {"prompt": "portrait", "output_dir": "/tmp/generated-images", "dynamic_thresholding_mimic_scale": 0},
+    {"prompt": "portrait", "output_dir": "/tmp/generated-images", "dynamic_thresholding_mimic_scale": 21},
+    {"prompt": "portrait", "output_dir": "/tmp/generated-images", "dynamic_thresholding_percentile": 0.9},
+    {"prompt": "portrait", "output_dir": "/tmp/generated-images", "dynamic_thresholding_percentile": 1},
+]
+print(json.dumps([worker.validate_payload(case)[1] for case in cases]))
+`)
+
+    expect(JSON.parse(output)).toEqual([
+      'dynamic_thresholding must be boolean',
+      'dynamic_thresholding_mimic_scale must be between 1 and 20',
+      'dynamic_thresholding_mimic_scale must be between 1 and 20',
+      'dynamic_thresholding_percentile must be greater than 0.9 and less than 1',
+      'dynamic_thresholding_percentile must be greater than 0.9 and less than 1'
+    ])
   })
 
   it('accepts explicit detail enhancement fields', () => {
@@ -421,6 +485,31 @@ print(json.dumps({
     expect(parsed.negative_prompt).toContain('cgi')
     expect(parsed.negative_prompt).toContain('plastic skin')
     expect(parsed.negative_prompt).toContain('over-smoothed skin')
+  })
+
+  torchIt('clips extreme latent values with dynamic thresholding helper', () => {
+    const output = runWorkerSnippet(`${importWorker}
+import torch
+latents = torch.tensor([[[[0.0, 1.0], [20.0, -200.0]]]])
+limited = worker.dynamic_threshold_latents(
+    torch,
+    latents,
+    guidance_scale=12.0,
+    mimic_scale=7.0,
+    percentile=0.95,
+)
+print(json.dumps({
+    "reduced": bool(limited.abs().max().item() < latents.abs().max().item()),
+    "shape": list(limited.shape),
+    "changed": bool(not torch.equal(latents, limited)),
+}))
+`)
+
+    expect(JSON.parse(output)).toEqual({
+      reduced: true,
+      shape: [1, 1, 2, 2],
+      changed: true
+    })
   })
 
   pillowIt('applies hires fix with expected img2img arguments using fake pipeline and torch', () => {
