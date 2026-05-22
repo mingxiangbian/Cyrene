@@ -402,6 +402,55 @@ print(json.dumps([
     expect(JSON.parse(output)).toEqual([128, 128, 64])
   })
 
+  it('caps large detail refinement sizes to stable 64-pixel multiples', () => {
+    const output = runWorkerSnippet(`${importWorker}
+sizes = [
+    worker.bounded_refinement_size((1024, 1536), worker.MAX_DETAIL_REFINEMENT_DIMENSION),
+    worker.bounded_refinement_size((1536, 1024), worker.MAX_DETAIL_REFINEMENT_DIMENSION),
+    worker.bounded_refinement_size((50, 65), worker.MAX_DETAIL_REFINEMENT_DIMENSION),
+]
+print(json.dumps({
+    "max_dimension": worker.MAX_DETAIL_REFINEMENT_DIMENSION,
+    "sizes": [list(size) for size in sizes],
+}))
+`)
+
+    const parsed = JSON.parse(output) as { max_dimension: number; sizes: number[][] }
+    expect(parsed.max_dimension).toBe(512)
+    expect(parsed.sizes).toEqual([[384, 512], [512, 384], [64, 128]])
+    for (const size of parsed.sizes) {
+      expect(size[0] % 64).toBe(0)
+      expect(size[1] % 64).toBe(0)
+    }
+    expect(Math.max(...parsed.sizes[0])).toBeLessThanOrEqual(parsed.max_dimension)
+    expect(Math.max(...parsed.sizes[1])).toBeLessThanOrEqual(parsed.max_dimension)
+  })
+
+  it('caps eye refinement sizes while keeping the existing 128-pixel floor', () => {
+    const output = runWorkerSnippet(`${importWorker}
+sizes = [
+    worker.bounded_refinement_size((1024, 768), worker.MAX_EYE_REFINEMENT_DIMENSION, 128),
+    worker.bounded_refinement_size((20, 24), worker.MAX_EYE_REFINEMENT_DIMENSION, 128),
+    worker.bounded_refinement_size((65, 65), worker.MAX_EYE_REFINEMENT_DIMENSION, 128),
+]
+print(json.dumps({
+    "max_dimension": worker.MAX_EYE_REFINEMENT_DIMENSION,
+    "sizes": [list(size) for size in sizes],
+}))
+`)
+
+    const parsed = JSON.parse(output) as { max_dimension: number; sizes: number[][] }
+    expect(parsed.max_dimension).toBe(256)
+    expect(parsed.sizes).toEqual([[256, 192], [128, 128], [128, 128]])
+    for (const size of parsed.sizes) {
+      expect(size[0] % 64).toBe(0)
+      expect(size[1] % 64).toBe(0)
+      expect(size[0]).toBeGreaterThanOrEqual(128)
+      expect(size[1]).toBeGreaterThanOrEqual(128)
+    }
+    expect(Math.max(...parsed.sizes[0])).toBeLessThanOrEqual(parsed.max_dimension)
+  })
+
   pillowIt('creates a soft mask with requested canvas size', () => {
     const output = runWorkerSnippet(`${importWorker}
 mask = worker.create_soft_mask((10, 20, 50, 80), (100, 120), 8)

@@ -33,6 +33,8 @@ DEFAULT_DYNAMIC_THRESHOLDING = False
 DEFAULT_DYNAMIC_THRESHOLDING_MIMIC_SCALE = 7.0
 DEFAULT_DYNAMIC_THRESHOLDING_PERCENTILE = 0.995
 HIRES_TILE_SIZE = 512
+MAX_DETAIL_REFINEMENT_DIMENSION = 512
+MAX_EYE_REFINEMENT_DIMENSION = 256
 AUTO_DETAIL_TARGETS = ("face", "hand")
 DETECTOR_ENV_BY_TARGET = {
     "face": "T2I_FACE_DETECTOR_MODEL",
@@ -430,6 +432,21 @@ def round_up_to_multiple(value: int, multiple: int) -> int:
     return max(multiple, ((value + multiple - 1) // multiple) * multiple)
 
 
+def bounded_refinement_size(
+    original_size: tuple[int, int],
+    max_dimension: int,
+    min_dimension: int = 64,
+) -> tuple[int, int]:
+    width, height = original_size
+    scale = min(1.0, max_dimension / max(width, height))
+    bounded_width = int(math.ceil(width * scale))
+    bounded_height = int(math.ceil(height * scale))
+    return (
+        max(min_dimension, round_up_to_multiple(bounded_width, 64)),
+        max(min_dimension, round_up_to_multiple(bounded_height, 64)),
+    )
+
+
 def resolve_detector_model_paths(detail_targets: str, env: dict[str, str] | None = None) -> dict[str, str]:
     if detail_targets != "auto" and detail_targets not in DETECTOR_ENV_BY_TARGET:
         raise RuntimeError("detail_targets must be one of auto, face, hand, person")
@@ -740,10 +757,7 @@ def refine_region(
     left, top, right, bottom = region["box"]
     crop = image.crop((left, top, right, bottom)).convert("RGB")
     original_size = crop.size
-    resized_size = (
-        round_up_to_multiple(original_size[0], 64),
-        round_up_to_multiple(original_size[1], 64),
-    )
+    resized_size = bounded_refinement_size(original_size, MAX_DETAIL_REFINEMENT_DIMENSION)
     resized_crop = crop.resize(resized_size, Image.Resampling.LANCZOS)
     prompt = f"{DETAIL_PROMPT_PREFIX[target]}, {request['prompt']}"
     negative_prompt = append_prompt_part(request["negative_prompt"], DETAIL_NEGATIVE_PROMPT.get(target, ""))
@@ -809,10 +823,7 @@ def refine_eye_region(
     left, top, right, bottom = eye_box
     crop = image.crop(eye_box).convert("RGB")
     original_size = crop.size
-    resized_size = (
-        max(128, round_up_to_multiple(original_size[0], 64)),
-        max(128, round_up_to_multiple(original_size[1], 64)),
-    )
+    resized_size = bounded_refinement_size(original_size, MAX_EYE_REFINEMENT_DIMENSION, 128)
     resized_crop = crop.resize(resized_size, Image.Resampling.LANCZOS)
     prompt = f"{EYE_REFINE_PROMPT}, {request['prompt']}"
     negative_prompt = append_prompt_part(request["negative_prompt"], EYE_REFINE_NEGATIVE_PROMPT)
