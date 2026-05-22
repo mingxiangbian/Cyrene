@@ -81,6 +81,10 @@ describe('generateImageTool', () => {
       expect(defaults.data.detail_targets).toBe('auto')
       expect(defaults.data.detail_strength).toBeUndefined()
       expect(defaults.data.return_intermediate).toBe(false)
+      expect(defaults.data.safe_preset).toBe(true)
+      expect(defaults.data.dynamic_thresholding).toBe(true)
+      expect(defaults.data.dynamic_thresholding_mimic_scale).toBe(7)
+      expect(defaults.data.dynamic_thresholding_percentile).toBe(0.995)
     }
 
     expect(generateImageTool.schema.safeParse({ prompt: 'portrait', width: 500 }).success).toBe(false)
@@ -155,6 +159,133 @@ describe('generateImageTool', () => {
     expect(result.content).toContain('relative path: generated-images/image-1.png')
     expect(result.content).toContain('seed: 42')
     expect(result.content).toContain('size: 512x768')
+  })
+
+  it('applies the M3 safe preset by default and reports adjustments', async () => {
+    const root = await tempRoot()
+    const imagePath = join(root, 'generated-images', 'safe.png')
+    const fetchMock = vi.fn(async (_url: string, _init: RequestInit) =>
+      mockJsonResponse({
+        model: 'majicmixRealistic_v7',
+        images: [{
+          path: imagePath,
+          seed: 123,
+          width: 1024,
+          height: 1536,
+          hires_upscaled: true,
+          hires_scale: 2,
+          postprocessed: true,
+          eye_refined: true,
+          eye_regions: 1,
+          detail_enhanced: true,
+          detail_regions: 1,
+          detail_targets: ['face'],
+          dynamic_thresholding: true,
+          dynamic_thresholding_mimic_scale: 7,
+          dynamic_thresholding_percentile: 0.995
+        }]
+      })
+    )
+    vi.stubGlobal('fetch', fetchMock)
+
+    const result = await generateImageTool.execute(
+      {
+        prompt: 'portrait photo',
+        width: 1024,
+        height: 1024,
+        steps: 40,
+        cfg_scale: 12,
+        count: 3,
+        hires_fix: false,
+        detail_enhance: false,
+        eye_refine: false,
+        bmab_postprocess: false
+      },
+      { config: config(root), trackedFiles: new Set<string>() }
+    )
+
+    const sent = JSON.parse(String((fetchMock.mock.calls[0][1] as RequestInit).body))
+    expect(result.ok).toBe(true)
+    expect(sent).toMatchObject({
+      width: 512,
+      height: 768,
+      steps: 20,
+      cfg_scale: 7,
+      count: 1,
+      hires_fix: true,
+      hires_scale: 2,
+      hires_steps: 15,
+      hires_denoise: 0.15,
+      detail_enhance: true,
+      detail_targets: 'face',
+      detail_strength: 0.1,
+      eye_refine: true,
+      eye_refine_strength: 0.12,
+      eye_refine_steps: 12,
+      bmab_postprocess: true,
+      dynamic_thresholding: true,
+      dynamic_thresholding_mimic_scale: 7,
+      dynamic_thresholding_percentile: 0.995
+    })
+    expect(result.content).toContain('preset: m3_16gb_safe')
+    expect(result.content).toContain('adjusted: width 1024 -> 512')
+    expect(result.content).toContain('dynamic thresholding: enabled')
+    expect(result.metadata).toMatchObject({
+      model: 'majicmixRealistic_v7',
+      preset: 'm3_16gb_safe',
+      dynamic_thresholding: {
+        enabled: true,
+        mimic_scale: 7,
+        percentile: 0.995
+      }
+    })
+  })
+
+  it('preserves explicit generation values when safe_preset is false', async () => {
+    const root = await tempRoot()
+    const fetchMock = vi.fn(async (_url: string, _init: RequestInit) =>
+      mockJsonResponse({
+        model: 'majicmixRealistic_v7',
+        images: [
+          { path: join(root, 'generated-images', 'a.png'), seed: 7, width: 768, height: 512 },
+          { path: join(root, 'generated-images', 'b.png'), seed: 8, width: 768, height: 512 }
+        ]
+      })
+    )
+    vi.stubGlobal('fetch', fetchMock)
+
+    const result = await generateImageTool.execute(
+      {
+        prompt: 'landscape',
+        safe_preset: false,
+        width: 768,
+        height: 512,
+        steps: 28,
+        cfg_scale: 11,
+        seed: 7,
+        count: 2,
+        dynamic_thresholding: true,
+        dynamic_thresholding_mimic_scale: 6,
+        dynamic_thresholding_percentile: 0.99
+      },
+      { config: config(root), trackedFiles: new Set<string>() }
+    )
+
+    const sent = JSON.parse(String((fetchMock.mock.calls[0][1] as RequestInit).body))
+    expect(result.ok).toBe(true)
+    expect(sent).toMatchObject({
+      safe_preset: false,
+      width: 768,
+      height: 512,
+      steps: 28,
+      cfg_scale: 11,
+      seed: 7,
+      count: 2,
+      dynamic_thresholding: true,
+      dynamic_thresholding_mimic_scale: 6,
+      dynamic_thresholding_percentile: 0.99
+    })
+    expect(result.content).not.toContain('preset: m3_16gb_safe')
   })
 
   it('passes explicit dimensions, count, seed, and negative prompt', async () => {
