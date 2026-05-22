@@ -138,6 +138,49 @@ def read_json_body(handler: BaseHTTPRequestHandler) -> tuple[Any | None, str | N
         return None, "Invalid JSON body."
 
 
+def parse_finite_float(payload: dict[str, Any], name: str, default: float) -> tuple[float | None, str | None]:
+    value = payload.get(name, default)
+    if isinstance(value, bool):
+        return None, f"{name} must be numeric"
+
+    try:
+        parsed = float(value)
+    except (TypeError, ValueError):
+        return None, f"{name} must be numeric"
+
+    if not math.isfinite(parsed):
+        return None, f"{name} must be finite"
+
+    return parsed, None
+
+
+def parse_finite_int(
+    payload: dict[str, Any],
+    name: str,
+    default: int | None,
+    type_error: str | None = None,
+) -> tuple[int | None, str | None]:
+    value = payload.get(name, default)
+    if value is None:
+        return None, None
+    error = type_error or f"{name} must be numeric"
+    if isinstance(value, bool):
+        return None, error
+
+    try:
+        numeric = float(value)
+    except (TypeError, ValueError):
+        return None, error
+
+    if not math.isfinite(numeric):
+        return None, f"{name} must be finite"
+
+    try:
+        return int(value), None
+    except (TypeError, ValueError):
+        return None, error
+
+
 def validate_payload(payload: Any) -> tuple[dict[str, Any] | None, str | None]:
     if not isinstance(payload, dict):
         return None, "request body must be a JSON object"
@@ -149,21 +192,25 @@ def validate_payload(payload: Any) -> tuple[dict[str, Any] | None, str | None]:
     if not isinstance(output_dir, str) or not os.path.isabs(output_dir):
         return None, "output_dir must be an absolute path"
 
-    try:
-        width = int(payload.get("width", 512))
-        height = int(payload.get("height", 768))
-        steps = int(payload.get("steps", 30))
-        cfg_scale = float(payload.get("cfg_scale", 7))
-        count = int(payload.get("count", 1))
-    except (TypeError, ValueError):
-        return None, "width, height, steps, cfg_scale, and count must be numeric"
+    width, error = parse_finite_int(payload, "width", 512)
+    if error:
+        return None, error
+    height, error = parse_finite_int(payload, "height", 768)
+    if error:
+        return None, error
+    steps, error = parse_finite_int(payload, "steps", 30)
+    if error:
+        return None, error
+    cfg_scale, error = parse_finite_float(payload, "cfg_scale", 7)
+    if error:
+        return None, error
+    count, error = parse_finite_int(payload, "count", 1)
+    if error:
+        return None, error
 
-    seed = payload.get("seed")
-    if seed is not None:
-        try:
-            seed = int(seed)
-        except (TypeError, ValueError):
-            return None, "seed must be an integer"
+    seed, error = parse_finite_int(payload, "seed", None, "seed must be an integer")
+    if error:
+        return None, error
 
     realism_preset = payload.get("realism_preset", False)
     if not isinstance(realism_preset, bool):
@@ -183,18 +230,37 @@ def validate_payload(payload: Any) -> tuple[dict[str, Any] | None, str | None]:
     if not isinstance(eye_refine, bool):
         return None, "eye_refine must be boolean"
 
-    try:
-        hires_scale = float(payload.get("hires_scale", DEFAULT_HIRES_SCALE))
-        hires_steps = int(payload.get("hires_steps", DEFAULT_HIRES_STEPS))
-        hires_denoise = float(payload.get("hires_denoise", DEFAULT_HIRES_DENOISE))
-        bmab_noise_alpha = float(payload.get("bmab_noise_alpha", DEFAULT_BMAB_NOISE_ALPHA))
-        bmab_contrast = float(payload.get("bmab_contrast", DEFAULT_BMAB_CONTRAST))
-        bmab_brightness = float(payload.get("bmab_brightness", DEFAULT_BMAB_BRIGHTNESS))
-        bmab_color_temperature = float(payload.get("bmab_color_temperature", DEFAULT_BMAB_COLOR_TEMPERATURE))
-        eye_refine_strength = float(payload.get("eye_refine_strength", DEFAULT_EYE_REFINE_STRENGTH))
-        eye_refine_steps = int(payload.get("eye_refine_steps", DEFAULT_EYE_REFINE_STEPS))
-    except (TypeError, ValueError):
-        return None, "hires, BMAB-like, and eye refine fields must be numeric"
+    hires_scale, error = parse_finite_float(payload, "hires_scale", DEFAULT_HIRES_SCALE)
+    if error:
+        return None, error
+    hires_steps, error = parse_finite_int(payload, "hires_steps", DEFAULT_HIRES_STEPS)
+    if error:
+        return None, error
+    hires_denoise, error = parse_finite_float(payload, "hires_denoise", DEFAULT_HIRES_DENOISE)
+    if error:
+        return None, error
+    bmab_noise_alpha, error = parse_finite_float(payload, "bmab_noise_alpha", DEFAULT_BMAB_NOISE_ALPHA)
+    if error:
+        return None, error
+    bmab_contrast, error = parse_finite_float(payload, "bmab_contrast", DEFAULT_BMAB_CONTRAST)
+    if error:
+        return None, error
+    bmab_brightness, error = parse_finite_float(payload, "bmab_brightness", DEFAULT_BMAB_BRIGHTNESS)
+    if error:
+        return None, error
+    bmab_color_temperature, error = parse_finite_float(
+        payload,
+        "bmab_color_temperature",
+        DEFAULT_BMAB_COLOR_TEMPERATURE,
+    )
+    if error:
+        return None, error
+    eye_refine_strength, error = parse_finite_float(payload, "eye_refine_strength", DEFAULT_EYE_REFINE_STRENGTH)
+    if error:
+        return None, error
+    eye_refine_steps, error = parse_finite_int(payload, "eye_refine_steps", DEFAULT_EYE_REFINE_STEPS)
+    if error:
+        return None, error
 
     if hires_scale < 1 or hires_scale > 4:
         return None, "hires_scale must be between 1 and 4"
@@ -225,13 +291,13 @@ def validate_payload(payload: Any) -> tuple[dict[str, Any] | None, str | None]:
     if not isinstance(detail_targets, str) or detail_targets not in DETAIL_TARGETS:
         return None, "detail_targets must be one of auto, face, hand, person"
 
-    try:
-        detail_strength = float(payload.get(
-            "detail_strength",
-            DEFAULT_REALISM_DETAIL_STRENGTH if realism_preset else DEFAULT_DETAIL_STRENGTH,
-        ))
-    except (TypeError, ValueError):
-        return None, "detail_strength must be numeric"
+    detail_strength, error = parse_finite_float(
+        payload,
+        "detail_strength",
+        DEFAULT_REALISM_DETAIL_STRENGTH if realism_preset else DEFAULT_DETAIL_STRENGTH,
+    )
+    if error:
+        return None, error
 
     if detail_strength < 0.1 or detail_strength > 0.7:
         return None, "detail_strength must be between 0.1 and 0.7"

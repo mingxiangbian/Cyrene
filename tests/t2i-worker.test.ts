@@ -273,6 +273,43 @@ print(json.dumps([worker.validate_payload(case)[1] for case in cases]))
       'return_intermediate must be boolean'
     ])
   })
+
+  it('rejects booleans for numeric fields', () => {
+    const output = runWorkerSnippet(`${importWorker}
+cases = [
+    {"prompt": "portrait", "output_dir": "/tmp/generated-images", "width": True},
+    {"prompt": "portrait", "output_dir": "/tmp/generated-images", "seed": True},
+    {"prompt": "portrait", "output_dir": "/tmp/generated-images", "hires_scale": True},
+    {"prompt": "portrait", "output_dir": "/tmp/generated-images", "detail_strength": True},
+]
+print(json.dumps([worker.validate_payload(case)[1] for case in cases]))
+`)
+
+    expect(JSON.parse(output)).toEqual([
+      'width must be numeric',
+      'seed must be an integer',
+      'hires_scale must be numeric',
+      'detail_strength must be numeric'
+    ])
+  })
+
+  it('rejects non-finite numeric fields', () => {
+    const output = runWorkerSnippet(`${importWorker}
+nan = float("nan")
+cases = [
+    {"prompt": "portrait", "output_dir": "/tmp/generated-images", "cfg_scale": nan},
+    {"prompt": "portrait", "output_dir": "/tmp/generated-images", "bmab_noise_alpha": nan},
+    {"prompt": "portrait", "output_dir": "/tmp/generated-images", "detail_strength": nan},
+]
+print(json.dumps([worker.validate_payload(case)[1] for case in cases]))
+`)
+
+    expect(JSON.parse(output)).toEqual([
+      'cfg_scale must be finite',
+      'bmab_noise_alpha must be finite',
+      'detail_strength must be finite'
+    ])
+  })
 })
 
 describe('t2i worker detail helpers', () => {

@@ -49,7 +49,7 @@ const schema: z.ZodType<GenerateImageArgs> = z.object({
   width: dimensionSchema.default(512),
   height: dimensionSchema.default(768),
   steps: z.number().int().positive().default(30),
-  cfg_scale: z.number().positive().default(7),
+  cfg_scale: z.number().positive().optional(),
   seed: z.number().int().optional(),
   count: z.number().int().min(1).max(4).default(1),
   realism_preset: z.boolean().default(false),
@@ -67,7 +67,7 @@ const schema: z.ZodType<GenerateImageArgs> = z.object({
   eye_refine_steps: z.number().int().positive().default(12),
   detail_enhance: z.boolean().default(false),
   detail_targets: z.enum(['auto', 'face', 'hand', 'person']).default('auto'),
-  detail_strength: z.number().min(0.1).max(0.7).default(0.35),
+  detail_strength: z.number().min(0.1).max(0.7).optional(),
   return_intermediate: z.boolean().default(false)
 })
 

@@ -4,6 +4,7 @@ import { join } from 'node:path'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { createDefaultConfig, type AppConfig } from '../src/config.js'
 import { generateImageTool } from '../src/tools/generate-image.js'
+import { executeToolCall } from '../src/tools/index.js'
 
 const tempRoots: string[] = []
 
@@ -61,7 +62,7 @@ describe('generateImageTool', () => {
       expect(defaults.data.width).toBe(512)
       expect(defaults.data.height).toBe(768)
       expect(defaults.data.steps).toBe(30)
-      expect(defaults.data.cfg_scale).toBe(7)
+      expect(defaults.data.cfg_scale).toBeUndefined()
       expect(defaults.data.count).toBe(1)
       expect(defaults.data.realism_preset).toBe(false)
       expect(defaults.data.hires_fix).toBe(false)
@@ -78,7 +79,7 @@ describe('generateImageTool', () => {
       expect(defaults.data.eye_refine_steps).toBe(12)
       expect(defaults.data.detail_enhance).toBe(false)
       expect(defaults.data.detail_targets).toBe('auto')
-      expect(defaults.data.detail_strength).toBe(0.35)
+      expect(defaults.data.detail_strength).toBeUndefined()
       expect(defaults.data.return_intermediate).toBe(false)
     }
 
@@ -330,6 +331,35 @@ describe('generateImageTool', () => {
         realism_preset: true,
         detail_enhance: true
       },
+      { config: config(root), trackedFiles: new Set<string>() }
+    )
+
+    const sent = JSON.parse(String((fetchMock.mock.calls[0][1] as RequestInit).body))
+    expect(result.ok).toBe(true)
+    expect(sent).toEqual(expect.objectContaining({
+      realism_preset: true,
+      cfg_scale: 6,
+      detail_strength: 0.2
+    }))
+  })
+
+  it('uses realism preset defaults through the tool registry execution path', async () => {
+    const root = await tempRoot()
+    const fetchMock = vi.fn(async (_url: string, _init: RequestInit) =>
+      mockJsonResponse({
+        model: 'majicmixRealistic_v7',
+        images: [{ path: join(root, 'generated-images', 'real.png'), seed: 42, width: 512, height: 768 }]
+      })
+    )
+    vi.stubGlobal('fetch', fetchMock)
+
+    const result = await executeToolCall(
+      {
+        id: 'call-1',
+        name: 'generate_image',
+        argumentsText: JSON.stringify({ prompt: 'portrait photo', realism_preset: true })
+      },
+      [generateImageTool],
       { config: config(root), trackedFiles: new Set<string>() }
     )
 
