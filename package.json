@@ -1,9 +1,9 @@
 {
-  "name": "cc-local",
+  "name": "jarvis",
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "bin": { "cc-local": "src/main.ts" },
+  "bin": { "jarvis": "src/main.ts" },
   "engines": {
     "node": ">=20",
     "npm": ">=10"

@@ -930,7 +930,7 @@ describe('startWebServer', () => {
     expect(callModel).toHaveBeenCalledTimes(2)
     expect(modelMessages[1][0]).toEqual(expect.objectContaining({
       role: 'system',
-      content: expect.stringContaining('You are cc-local')
+      content: expect.stringContaining('You are Jarvis')
     }))
     expect(modelMessages[1].slice(1)).toEqual([
       { role: 'user', content: 'hello web' },

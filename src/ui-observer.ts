@@ -115,8 +115,8 @@ export function renderPrismMascot(options: { color?: boolean } = {}): string {
 export function renderWelcome(input: { modelName: string; color?: boolean }): string {
   const color = input.color ?? true
   const title = color
-    ? `${chalk.hex(PRISM_THEME.colors.iceCyan)('cc-local')} ${chalk.hex(PRISM_THEME.colors.lavender)('·')} ${chalk.hex(PRISM_THEME.colors.softPink)('Prism Agent')}`
-    : 'cc-local · Prism Agent'
+    ? `${chalk.hex(PRISM_THEME.colors.iceCyan)('Jarvis')} ${chalk.hex(PRISM_THEME.colors.lavender)('·')} ${chalk.hex(PRISM_THEME.colors.softPink)('Prism Agent')}`
+    : 'Jarvis · Prism Agent'
   const model = color ? chalk.hex(PRISM_THEME.colors.muted)(`${input.modelName} · /help`) : `${input.modelName} · /help`
   return `${renderPrismMascot({ color })}\n${title}\n${model}`
 }

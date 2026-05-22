@@ -108,7 +108,7 @@ describe('Prism render helpers', () => {
       modelName: 'Qwen3.5-9B-MLX-4bit',
       color: false
     })
-    expect(welcome).toContain('cc-local')
+    expect(welcome).toContain('Jarvis')
     expect(welcome).toContain('Prism Agent')
     expect(welcome).toContain('Qwen3.5-9B-MLX-4bit')
     expect(welcome).toContain('/help')

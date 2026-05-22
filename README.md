@@ -1,4 +1,4 @@
-# CC Local Agent
+# Jarvis
 
 Local TypeScript agent runtime with a web UI, REPL mode, project-local memory, and file tools scoped to a workspace.
 

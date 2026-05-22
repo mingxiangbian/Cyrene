@@ -97,7 +97,7 @@ describe('main CLI', () => {
 
         child.stdout.on('data', (chunk: Buffer) => {
           stdout += chunk.toString('utf8')
-          if (/cc-local web listening at http:\/\/127\.0\.0\.1:\d+/.test(stdout)) {
+          if (/jarvis web listening at http:\/\/127\.0\.0\.1:\d+/.test(stdout)) {
             clearTimeout(timeout)
             resolve()
           }
@@ -117,7 +117,7 @@ describe('main CLI', () => {
         })
       })
 
-      expect(stdout).toMatch(/cc-local web listening at http:\/\/127\.0\.0\.1:\d+\n/)
+      expect(stdout).toMatch(/jarvis web listening at http:\/\/127\.0\.0\.1:\d+\n/)
       expect(stderr).toBe('')
     } finally {
       if (child.exitCode === null && child.signalCode === null) {
