@@ -109,10 +109,12 @@ export async function appendSessionEvent(input: {
     updatedAt: at
   }
   if (input.event.type === 'message') {
-    if (existing.title === 'Untitled session' && input.event.message.role === 'user') {
+    if (existing.title === 'Untitled session' && isDisplayMessage(input.event.message) && input.event.message.role === 'user') {
       next.title = titleFromMessage(input.event.message) ?? existing.title
     }
-    next.preview = previewFromMessage(input.event.message) ?? existing.preview
+    if (isDisplayMessage(input.event.message)) {
+      next.preview = previewFromMessage(input.event.message) ?? existing.preview
+    }
   } else {
     next.preview = truncateOneLine(input.event.message, 120)
   }
@@ -201,10 +203,10 @@ export async function loadSession(input: {
   const modelMessages: ChatMessage[] = []
   for (const event of events) {
     if (event.type === 'message') {
-      if (event.message.role === 'user' || event.message.role === 'assistant') {
+      if (isDisplayMessage(event.message)) {
         messages.push({ role: event.message.role, content: event.message.content })
-        modelMessages.push({ role: event.message.role, content: event.message.content })
       }
+      modelMessages.push(copyModelMessage(event.message))
       continue
     }
     messages.push({ role: 'error', content: event.message })
@@ -227,11 +229,15 @@ function parseEventLine(line: string): SessionEvent | null {
     if (parsed.type === 'message' && isObject(parsed.message)) {
       const role = parsed.message.role
       const content = parsed.message.content
-      if ((role === 'user' || role === 'assistant') && typeof content === 'string') {
+      if (
+        (role === 'user' || role === 'assistant' || role === 'tool') &&
+        typeof content === 'string' &&
+        isValidToolCallMetadata(parsed.message)
+      ) {
         return {
           type: 'message',
           at: typeof parsed.at === 'string' ? parsed.at : undefined,
-          message: { role, content }
+          message: copyModelMessage(parsed.message as unknown as ChatMessage)
         }
       }
     }
@@ -245,6 +251,35 @@ function parseEventLine(line: string): SessionEvent | null {
   } catch {
   }
   return null
+}
+
+function isValidToolCallMetadata(message: Record<string, unknown>): boolean {
+  if (message.tool_call_id !== undefined && typeof message.tool_call_id !== 'string') {
+    return false
+  }
+
+  return message.tool_calls === undefined || Array.isArray(message.tool_calls)
+}
+
+function isDisplayMessage(message: ChatMessage): message is ChatMessage & { role: 'user' | 'assistant' } {
+  return (message.role === 'user' || message.role === 'assistant') && message.content.trim() !== ''
+}
+
+function copyModelMessage(message: ChatMessage): ChatMessage {
+  return {
+    role: message.role,
+    content: message.content,
+    ...(message.tool_call_id === undefined ? {} : { tool_call_id: message.tool_call_id }),
+    ...(message.tool_calls === undefined
+      ? {}
+      : {
+          tool_calls: message.tool_calls.map((toolCall) => ({
+            id: toolCall.id,
+            type: toolCall.type,
+            function: { ...toolCall.function }
+          }))
+        })
+  }
 }
 
 async function appendEventLine(cwd: string, sessionId: string, event: SessionEvent): Promise<void> {

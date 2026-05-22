@@ -801,6 +801,107 @@ describe('startWebServer', () => {
     await expect(realpath(join(cwd, 'workspace', 'generated-images'))).rejects.toThrow()
   })
 
+  it('preserves generate_image tool history when continuing a Web session', async () => {
+    const cwd = await createTempCwd()
+    await mkdir(join(cwd, 'workspace', 'project-a'))
+    let imageIndex = 0
+    const mockT2IUrl = await startMockT2IServer((body) => {
+      imageIndex += 1
+      return {
+        model: 'majicmixRealistic_v7',
+        images: [{
+          path: join(body.output_dir, `web-image-${imageIndex}.png`),
+          seed: imageIndex,
+          width: 512,
+          height: 768
+        }]
+      }
+    })
+    vi.stubEnv('T2I_BASE_URL', mockT2IUrl)
+    const modelMessages: CallModelInput['messages'][] = []
+    const callModel = vi.fn(async (input: CallModelInput): Promise<ModelResponse> => {
+      modelMessages.push(input.messages.map((message) => ({ ...message })))
+      if (callModel.mock.calls.length === 1) {
+        return {
+          content: '',
+          toolCalls: [{
+            id: 'call-first-image',
+            type: 'function',
+            function: {
+              name: 'generate_image',
+              arguments: JSON.stringify({ prompt: 'first portrait', seed: 1 })
+            }
+          }]
+        }
+      }
+      if (callModel.mock.calls.length === 2) {
+        return { content: 'first image generated', toolCalls: [] }
+      }
+      if (callModel.mock.calls.length === 3) {
+        return {
+          content: '',
+          toolCalls: [{
+            id: 'call-second-image',
+            type: 'function',
+            function: {
+              name: 'generate_image',
+              arguments: JSON.stringify({ prompt: 'second portrait', seed: 2 })
+            }
+          }]
+        }
+      }
+
+      return { content: 'second image generated', toolCalls: [] }
+    })
+    const server = await startWebServer({
+      cwd,
+      host: '127.0.0.1',
+      port: 0,
+      callModel
+    })
+    servers.push(server)
+
+    const firstResponse = await fetch(`${server.url}/api/runs`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ message: 'generate first image', workspaceId: 'project-a' })
+    })
+    expect(firstResponse.status).toBe(202)
+    const firstBody = (await firstResponse.json()) as { runId: string; sessionId: string }
+    await readRunEventStream(`${server.url}/api/runs/${firstBody.runId}/events`)
+
+    const secondResponse = await fetch(`${server.url}/api/runs`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        sessionId: firstBody.sessionId,
+        message: 'generate another image',
+        workspaceId: 'project-a'
+      })
+    })
+    expect(secondResponse.status).toBe(202)
+    const secondBody = (await secondResponse.json()) as { runId: string }
+    const { body: secondStreamBody } = await readRunEventStream(`${server.url}/api/runs/${secondBody.runId}/events`)
+
+    expect(secondStreamBody).toContain('generated-images/web-image-2.png')
+    expect(modelMessages[2]).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        role: 'assistant',
+        tool_calls: [expect.objectContaining({
+          id: 'call-first-image',
+          function: expect.objectContaining({ name: 'generate_image' })
+        })]
+      }),
+      expect.objectContaining({
+        role: 'tool',
+        tool_call_id: 'call-first-image',
+        content: expect.stringContaining('generated-images/web-image-1.png')
+      }),
+      { role: 'assistant', content: 'first image generated' },
+      { role: 'user', content: 'generate another image' }
+    ]))
+  })
+
   it('persists selected workspace ids and rejects cross-workspace resume', async () => {
     const cwd = await createTempCwd()
     await mkdir(join(cwd, 'workspace', 'project-a'))

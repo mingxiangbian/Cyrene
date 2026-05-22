@@ -330,10 +330,12 @@ async function runWebAgent(
 ): Promise<void> {
   try {
     const runtime = await buildAgentRuntime(record.workspace.absolutePath)
+    const modelMessages: ChatMessage[] = [{ role: 'system', content: runtime.systemPrompt }, ...record.messages]
+    const persistedStartIndex = modelMessages.length
     const result = await runAgentLoop({
       config: runtime.config,
       tools: runtime.tools,
-      messages: [{ role: 'system', content: runtime.systemPrompt }, ...record.messages],
+      messages: modelMessages,
       observer: createWebObserver((event) => {
         if (event.type !== 'final') {
           emit(record, event)
@@ -341,10 +343,11 @@ async function runWebAgent(
       }),
       callModel
     })
-    await appendSessionEvent({
+    await appendRunModelMessages({
       cwd: record.cwd,
       sessionId: record.sessionId,
-      event: { type: 'message', message: { role: 'assistant', content: result.finalText } }
+      messages: modelMessages.slice(persistedStartIndex),
+      fallbackFinalText: result.finalText
     })
     emit(record, { type: 'final', text: result.finalText })
     try {
@@ -366,6 +369,36 @@ async function runWebAgent(
       }
     }).catch(() => {})
     emit(record, errorEvent(error))
+  }
+}
+
+async function appendRunModelMessages(input: {
+  cwd: string
+  sessionId: string
+  messages: ChatMessage[]
+  fallbackFinalText: string
+}): Promise<void> {
+  let persistedFinalText = false
+  for (const message of input.messages) {
+    if (message.role === 'system') {
+      continue
+    }
+    if (message.role === 'assistant' && message.content === input.fallbackFinalText) {
+      persistedFinalText = true
+    }
+    await appendSessionEvent({
+      cwd: input.cwd,
+      sessionId: input.sessionId,
+      event: { type: 'message', message }
+    })
+  }
+
+  if (!persistedFinalText && input.fallbackFinalText.trim() !== '') {
+    await appendSessionEvent({
+      cwd: input.cwd,
+      sessionId: input.sessionId,
+      event: { type: 'message', message: { role: 'assistant', content: input.fallbackFinalText } }
+    })
   }
 }
 

@@ -78,6 +78,96 @@ describe('session store', () => {
     )
   })
 
+  it('loads tool-call messages for model history without showing them in the transcript', async () => {
+    const cwd = await createTempCwd()
+    const session = await createSession({
+      cwd,
+      mode: 'web',
+      model: 'test-model',
+      id: 'tool-session',
+      now: new Date('2026-05-20T01:00:00.000Z'),
+      firstUserMessage: { role: 'user', content: 'Generate an image' }
+    })
+
+    await appendSessionEvent({
+      cwd,
+      sessionId: session.id,
+      event: {
+        type: 'message',
+        at: '2026-05-20T01:01:00.000Z',
+        message: {
+          role: 'assistant',
+          content: '',
+          tool_calls: [{
+            id: 'call-image',
+            type: 'function',
+            function: {
+              name: 'generate_image',
+              arguments: '{"prompt":"portrait"}'
+            }
+          }]
+        }
+      }
+    })
+    await appendSessionEvent({
+      cwd,
+      sessionId: session.id,
+      event: {
+        type: 'message',
+        at: '2026-05-20T01:02:00.000Z',
+        message: {
+          role: 'tool',
+          content: 'Generated images: generated-images/image.png',
+          tool_call_id: 'call-image'
+        }
+      }
+    })
+    await appendSessionEvent({
+      cwd,
+      sessionId: session.id,
+      event: {
+        type: 'message',
+        at: '2026-05-20T01:03:00.000Z',
+        message: { role: 'assistant', content: 'Image generated.' }
+      }
+    })
+
+    await expect(listSessions(cwd)).resolves.toEqual([
+      expect.objectContaining({
+        id: 'tool-session',
+        preview: 'Image generated.'
+      })
+    ])
+    await expect(loadSession({ cwd, sessionId: session.id, recentMessages: 10 })).resolves.toEqual({
+      session: expect.objectContaining({ id: 'tool-session' }),
+      messages: [
+        { role: 'user', content: 'Generate an image' },
+        { role: 'assistant', content: 'Image generated.' }
+      ],
+      modelMessages: [
+        { role: 'user', content: 'Generate an image' },
+        {
+          role: 'assistant',
+          content: '',
+          tool_calls: [{
+            id: 'call-image',
+            type: 'function',
+            function: {
+              name: 'generate_image',
+              arguments: '{"prompt":"portrait"}'
+            }
+          }]
+        },
+        {
+          role: 'tool',
+          content: 'Generated images: generated-images/image.png',
+          tool_call_id: 'call-image'
+        },
+        { role: 'assistant', content: 'Image generated.' }
+      ]
+    })
+  })
+
   it('keeps unsafe session ids out of the session directory', async () => {
     const cwd = await createTempCwd()
 
