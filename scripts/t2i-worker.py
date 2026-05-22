@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+import inspect
 import json
 import math
 import os
@@ -28,6 +29,9 @@ DEFAULT_BMAB_BRIGHTNESS = 1.1
 DEFAULT_BMAB_COLOR_TEMPERATURE = 15.0
 DEFAULT_EYE_REFINE_STRENGTH = 0.12
 DEFAULT_EYE_REFINE_STEPS = 12
+DEFAULT_DYNAMIC_THRESHOLDING = False
+DEFAULT_DYNAMIC_THRESHOLDING_MIMIC_SCALE = 7.0
+DEFAULT_DYNAMIC_THRESHOLDING_PERCENTILE = 0.995
 HIRES_TILE_SIZE = 512
 AUTO_DETAIL_TARGETS = ("face", "hand")
 DETECTOR_ENV_BY_TARGET = {
@@ -230,6 +234,10 @@ def validate_payload(payload: Any) -> tuple[dict[str, Any] | None, str | None]:
     if not isinstance(eye_refine, bool):
         return None, "eye_refine must be boolean"
 
+    dynamic_thresholding = payload.get("dynamic_thresholding", DEFAULT_DYNAMIC_THRESHOLDING)
+    if not isinstance(dynamic_thresholding, bool):
+        return None, "dynamic_thresholding must be boolean"
+
     hires_scale, error = parse_finite_float(payload, "hires_scale", DEFAULT_HIRES_SCALE)
     if error:
         return None, error
@@ -261,6 +269,20 @@ def validate_payload(payload: Any) -> tuple[dict[str, Any] | None, str | None]:
     eye_refine_steps, error = parse_finite_int(payload, "eye_refine_steps", DEFAULT_EYE_REFINE_STEPS)
     if error:
         return None, error
+    dynamic_thresholding_mimic_scale, error = parse_finite_float(
+        payload,
+        "dynamic_thresholding_mimic_scale",
+        DEFAULT_DYNAMIC_THRESHOLDING_MIMIC_SCALE,
+    )
+    if error:
+        return None, error
+    dynamic_thresholding_percentile, error = parse_finite_float(
+        payload,
+        "dynamic_thresholding_percentile",
+        DEFAULT_DYNAMIC_THRESHOLDING_PERCENTILE,
+    )
+    if error:
+        return None, error
 
     if hires_scale < 1 or hires_scale > 4:
         return None, "hires_scale must be between 1 and 4"
@@ -278,6 +300,10 @@ def validate_payload(payload: Any) -> tuple[dict[str, Any] | None, str | None]:
         return None, "eye_refine_strength must be between 0.05 and 0.3"
     if eye_refine_steps <= 0:
         return None, "eye_refine_steps must be positive"
+    if dynamic_thresholding_mimic_scale < 1 or dynamic_thresholding_mimic_scale > 20:
+        return None, "dynamic_thresholding_mimic_scale must be between 1 and 20"
+    if dynamic_thresholding_percentile <= 0.9 or dynamic_thresholding_percentile >= 1:
+        return None, "dynamic_thresholding_percentile must be greater than 0.9 and less than 1"
 
     detail_enhance = payload.get("detail_enhance", False)
     if not isinstance(detail_enhance, bool):
@@ -328,11 +354,67 @@ def validate_payload(payload: Any) -> tuple[dict[str, Any] | None, str | None]:
         "eye_refine": eye_refine,
         "eye_refine_strength": eye_refine_strength,
         "eye_refine_steps": eye_refine_steps,
+        "dynamic_thresholding": dynamic_thresholding,
+        "dynamic_thresholding_mimic_scale": dynamic_thresholding_mimic_scale,
+        "dynamic_thresholding_percentile": dynamic_thresholding_percentile,
         "detail_enhance": detail_enhance,
         "detail_targets": detail_targets,
         "detail_strength": detail_strength,
         "return_intermediate": return_intermediate,
     }, None
+
+
+def pipe_supports_step_end_callback(pipe: Any) -> bool:
+    parameters = inspect.signature(pipe.__call__).parameters
+    return (
+        "callback_on_step_end" in parameters
+        and "callback_on_step_end_tensor_inputs" in parameters
+    )
+
+
+def dynamic_threshold_latents(
+    torch_module: Any,
+    latents: Any,
+    guidance_scale: float,
+    mimic_scale: float,
+    percentile: float,
+) -> Any:
+    if guidance_scale <= mimic_scale:
+        return latents
+
+    if getattr(latents, "ndim", 0) < 2:
+        return latents
+
+    original_dtype = latents.dtype
+    flat = latents.detach().float().reshape(latents.shape[0], -1).abs()
+    threshold = torch_module.quantile(flat, percentile, dim=1)
+    threshold = torch_module.maximum(threshold, torch_module.ones_like(threshold))
+    view_shape = (latents.shape[0],) + (1,) * (latents.ndim - 1)
+    threshold = threshold.reshape(view_shape).to(device=latents.device, dtype=original_dtype)
+    clipped = latents.clamp(-threshold, threshold)
+    blend = max(0.0, min(1.0, mimic_scale / guidance_scale))
+    return (latents * blend) + (clipped * (1.0 - blend))
+
+
+def build_dynamic_thresholding_callback(
+    torch_module: Any,
+    guidance_scale: float,
+    mimic_scale: float,
+    percentile: float,
+) -> Any:
+    def callback(_pipe: Any, _step_index: int, _timestep: Any, callback_kwargs: dict[str, Any]) -> dict[str, Any]:
+        latents = callback_kwargs.get("latents")
+        if latents is not None:
+            callback_kwargs["latents"] = dynamic_threshold_latents(
+                torch_module,
+                latents,
+                guidance_scale=guidance_scale,
+                mimic_scale=mimic_scale,
+                percentile=percentile,
+            )
+        return callback_kwargs
+
+    return callback
 
 
 def round_up_to_multiple(value: int, multiple: int) -> int:
@@ -822,6 +904,17 @@ def generate_images(state: WorkerState, request: dict[str, Any]) -> list[dict[st
             "generator": generator,
             "clip_skip": 2,
         }
+        if request["dynamic_thresholding"]:
+            if not pipe_supports_step_end_callback(state.pipe):
+                raise RuntimeError("dynamic_thresholding requires diffusers callback_on_step_end support")
+            kwargs["callback_on_step_end"] = build_dynamic_thresholding_callback(
+                state.torch,
+                guidance_scale=request["cfg_scale"],
+                mimic_scale=request["dynamic_thresholding_mimic_scale"],
+                percentile=request["dynamic_thresholding_percentile"],
+            )
+            kwargs["callback_on_step_end_tensor_inputs"] = ["latents"]
+
         try:
             result = state.pipe(**kwargs)
         except TypeError as exc:
@@ -860,6 +953,9 @@ def generate_images(state: WorkerState, request: dict[str, Any]) -> list[dict[st
             "seed": seed,
             "width": image.size[0],
             "height": image.size[1],
+            "dynamic_thresholding": request["dynamic_thresholding"],
+            "dynamic_thresholding_mimic_scale": request["dynamic_thresholding_mimic_scale"],
+            "dynamic_thresholding_percentile": request["dynamic_thresholding_percentile"],
             **hires_metadata,
             **detail_metadata,
             **postprocess_metadata,
