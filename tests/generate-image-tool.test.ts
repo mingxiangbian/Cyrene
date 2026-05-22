@@ -113,7 +113,10 @@ describe('generateImageTool', () => {
     expect(generateImageTool.schema.safeParse({ prompt: 'portrait', detail_strength: 0.09 }).success).toBe(false)
     expect(generateImageTool.schema.safeParse({ prompt: 'portrait', detail_strength: 0.71 }).success).toBe(false)
     expect(generateImageTool.schema.safeParse({ prompt: 'portrait', dynamic_thresholding_mimic_scale: 0 }).success).toBe(false)
+    expect(generateImageTool.schema.safeParse({ prompt: 'portrait', dynamic_thresholding_mimic_scale: 20.1 }).success).toBe(false)
     expect(generateImageTool.schema.safeParse({ prompt: 'portrait', dynamic_thresholding_percentile: 0 }).success).toBe(false)
+    expect(generateImageTool.schema.safeParse({ prompt: 'portrait', dynamic_thresholding_percentile: 0.9 }).success).toBe(false)
+    expect(generateImageTool.schema.safeParse({ prompt: 'portrait', dynamic_thresholding_percentile: 1 }).success).toBe(false)
     expect(generateImageTool.schema.safeParse({ prompt: 'portrait', dynamic_thresholding_percentile: 1.01 }).success).toBe(false)
   })
 
@@ -291,14 +294,17 @@ describe('generateImageTool', () => {
         percentile: 0.995
       }
     })
-    const metadata = result.metadata as { preset_adjustments?: unknown[] } | undefined
-    if (metadata?.preset_adjustments) {
-      expect(metadata.preset_adjustments).toEqual(expect.arrayContaining([
-        expect.objectContaining({ field: 'width', from: 1024, to: 512 }),
-        expect.objectContaining({ field: 'cfg_scale', from: 12, to: 7 }),
-        expect.objectContaining({ field: 'count', from: 3, to: 1 })
-      ]))
-    }
+    expect(result.metadata?.preset_adjustments).toEqual(expect.arrayContaining([
+      expect.objectContaining({ field: 'width', from: 1024, to: 512 }),
+      expect.objectContaining({ field: 'height', from: 1024, to: 768 }),
+      expect.objectContaining({ field: 'steps', from: 40, to: 20 }),
+      expect.objectContaining({ field: 'cfg_scale', from: 12, to: 7 }),
+      expect.objectContaining({ field: 'count', from: 3, to: 1 }),
+      expect.objectContaining({ field: 'hires_fix', from: false, to: true }),
+      expect.objectContaining({ field: 'detail_enhance', from: false, to: true }),
+      expect.objectContaining({ field: 'eye_refine', from: false, to: true }),
+      expect.objectContaining({ field: 'bmab_postprocess', from: false, to: true })
+    ]))
   })
 
   it('preserves explicit generation values when safe_preset is false', async () => {
