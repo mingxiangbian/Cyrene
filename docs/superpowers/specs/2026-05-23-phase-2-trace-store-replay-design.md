@@ -8,7 +8,7 @@ Approved for planning.
 
 Phase 0 已经把 Cyrene 收敛到 `API-first` 基线，移除 legacy T2I runtime，并让工具注册由 config 驱动。Phase 1 已经加入 `Model Router`、DeepSeek profile、provider metadata、thinking mode 和 context window metadata。
 
-Phase 2 的目标是给后续 typed memory、eval harness 和 controlled evolution 提供可观察、可追溯的 run 证据。没有 trace，后续的 memory evidence、eval report 和 evolution proposal 都缺少稳定来源。
+Phase 2 的目标是给 Cyrene 建立可观察、可追溯的 run 证据。完成本 phase 后，CLI one-shot、REPL turn 和 Web run 都应该能留下可检查、可 replay transcript 的 trace。
 
 当前代码已有可复用基础：
 
@@ -25,18 +25,18 @@ src/models/*             // route/capability/usage metadata
 
 ## 目标
 
-Phase 2 v0 覆盖：
+Phase 2 覆盖：
 
 - 每次 CLI one-shot、REPL turn、Web run 都创建持久 `runId`。
 - 每个 run 写入 `.cyrene/runs/{runId}/`。
 - 记录输入、messages、model calls、tool calls、final output 和 metrics。
 - 记录内容默认是 summary-first，不保存完整 raw tool input/output。
 - 新增最小 CLI replay：`cyrene trace replay <runId>`。
-- replay v0 只恢复或显示 `messages.jsonl` transcript，不重新执行 tools，不重新请求模型。
+- replay 只恢复或显示 `messages.jsonl` transcript，不重新执行 tools，不重新请求模型。
 
 ## 非目标
 
-Phase 2 v0 不做：
+Phase 2 明确不做：
 
 - Web UI Trace 面板。
 - deterministic replay。
@@ -46,15 +46,15 @@ Phase 2 v0 不做：
 - filesystem snapshot、patch diff、step-level rollback。
 - eval harness、typed memory、affect state 或 evolution proposal。
 
-这些能力后续应分别进入 Phase 2b、Phase 5、Phase 3、Phase 4 和 Phase 6。
+这些是本次 Phase 2 的明确排除项，不作为本 spec 追加的其他任务。
 
 ## 设计原则
 
 1. `session-store` 继续负责聊天历史和 UI resume；`trace-store` 负责行为审计和 replay evidence。
 2. `agent-loop` 保持核心职责，只做必要的可观测性补点。
 3. trace 写入失败不应吞掉用户最终答案。
-4. v0 默认不保存完整 raw tool payload，先避免 secret 泄露和 trace 体积膨胀。
-5. replay v0 是 transcript replay / inspect replay，不是 side-effect replay。
+4. 默认不保存完整 raw tool payload，避免 secret 泄露和 trace 体积膨胀。
+5. replay 是 transcript replay / inspect replay，不是 side-effect replay。
 
 ## 目录结构
 
@@ -118,7 +118,7 @@ interface TraceMessageLine {
 }
 ```
 
-`providerMetadata` 可以保留，因为 DeepSeek thinking replay 和 usage metadata 已经在 Phase 1 设计中进入 session history。`system` message 不写入 trace v0，避免复制完整 system prompt。
+`providerMetadata` 可以保留，因为 DeepSeek thinking replay 和 usage metadata 已经在 Phase 1 设计中进入 session history。`system` message 不写入 trace，避免复制完整 system prompt。
 
 ### model-calls.jsonl
 
@@ -141,7 +141,7 @@ interface TraceModelCallLine {
 }
 ```
 
-v0 不保存完整 request body。`messageCount` 和 `toolCount` 足够支持后续性能、成本和行为分析的第一层指标。
+不保存完整 request body。`messageCount` 和 `toolCount` 足够支持性能、成本和行为分析的第一层指标。
 
 ### tool-calls.jsonl
 
@@ -160,7 +160,7 @@ interface TraceToolCallLine {
 }
 ```
 
-v0 不保存完整 raw `arguments` 或 raw tool output。`inputSummary` 沿用 `toolCallSummary(...)`，`outputSummary` 沿用当前 observer 使用的 result summary。为了把 start/result 和 `messages.jsonl` 中的 assistant tool call 对上，`AgentObserver` 或 tracing hook 需要拿到 `toolCallId`。
+不保存完整 raw `arguments` 或 raw tool output。`inputSummary` 沿用 `toolCallSummary(...)`，`outputSummary` 沿用当前 observer 使用的 result summary。为了把 start/result 和 `messages.jsonl` 中的 assistant tool call 对上，`AgentObserver` 或 tracing hook 需要拿到 `toolCallId`。
 
 ### final.md
 
@@ -230,7 +230,7 @@ onToolCallStart(name, summary)
 onToolCallResult(name, ok, durationMs, summary)
 ```
 
-Phase 2 v0 需要最小扩展：
+Phase 2 需要最小扩展：
 
 ```ts
 onToolCallStart(name, summary, toolCallId?)
@@ -241,7 +241,7 @@ onToolCallResult(name, ok, durationMs, summary, toolCallId?)
 
 ### messages 记录
 
-为了避免大量侵入 `agent-loop`，v0 可以在 run 结束后记录调用方可见的 `messages` delta：
+为了避免大量侵入 `agent-loop`，可以在 run 结束后记录调用方可见的 `messages` delta：
 
 - CLI one-shot：记录 run 内新增的 user/assistant/tool messages。
 - REPL turn：记录本 turn 新增的 user/assistant/tool messages。
@@ -282,9 +282,9 @@ sessionId = current repl session id
 
 Web 已有 in-memory `RunRecord.id`。Phase 2 应让这个 ID 成为持久 trace `runId`，或者用同一个 `runId` 初始化 `TraceRecorder`。
 
-Web v0 不新增 Trace 面板。SSE events 保持现状。
+Web 不新增 Trace 面板。SSE events 保持现状。
 
-## Replay v0
+## Replay
 
 新增 CLI：
 
@@ -306,7 +306,7 @@ cyrene trace replay <runId>
 loadTraceMessages(cwd: string, runId: string): Promise<ChatMessage[]>
 ```
 
-后续如果要实现 “从 trace 继续对话”，可以复用这个 helper，但不属于 v0。
+这个 helper 只服务当前 `trace replay` 命令和测试。
 
 ## 错误处理
 
