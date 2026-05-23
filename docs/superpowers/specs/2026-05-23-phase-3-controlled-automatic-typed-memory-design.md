@@ -27,15 +27,15 @@ Typed Memory 作为 source of truth
 
 ```txt
 src/memory.ts             // markdown MEMORY.md、daily.md、compaction、legacy write helpers
-src/daily-summary.ts      // 每轮结束后的 daily candidate summary
-src/daily-compaction.ts   // daily.md 达到阈值后的 durable memory promotion
-src/agent-loop.ts         // final answer 后触发 daily summary
+src/daily-summary.ts      // 旧 daily summary 入口，Phase 3 后退休
+src/daily-compaction.ts   // 旧 daily compaction 入口，Phase 3 后退休
+src/agent-loop.ts         // final answer 后触发 post-run hooks
 src/web/prompt-context.ts // 构造 system prompt，加载 project/global/daily memory
 src/tracing/*             // Phase 2 run evidence
 src/models/*              // memory_extraction route 可走 cheap model
 ```
 
-当前 memory 更新是半自动：
+当前 memory 更新是半自动，Phase 3 会替换这条路径：
 
 - `maybeAppendDailySummary()` 只在检测到 durable signal 时写 `.cyrene/memory/daily.md`。
 - `compactDailyIfNeeded()` 只有在 `daily.md` 达到 `dailyCompactThreshold` 后才调用模型晋升到 `MEMORY.md` 和 topic markdown 文件。
@@ -92,8 +92,6 @@ Phase 3 明确不做：
   events.jsonl            # append-only lifecycle audit log
   tombstones.jsonl        # rejected/expired/superseded/archived memory fingerprints
   MEMORY.md               # generated human-readable projection from index.jsonl
-  daily.md                # short-term daily summaries, kept during migration window
-  daily.archive.md        # existing daily archive behavior remains
   snapshots/
     {snapshotId}.json     # rollback snapshot for memory store state
 ```
@@ -711,7 +709,7 @@ Web run 已有 `record.id` 作为 `runId`。Phase 3 在 `runWebAgent` 完成 tra
 
 ### REPL turn
 
-REPL 每个 turn 重新构造或追加当轮 memory context，避免启动时只加载一次旧 memory。每个成功 agent turn 后运行 memory pipeline。REPL graceful exit 仍可保留 daily compaction 兼容路径，直到 migration 完成。
+REPL 每个 turn 重新构造或追加当轮 memory context，避免启动时只加载一次旧 memory。每个成功 agent turn 后运行 memory pipeline。REPL graceful exit 不再运行 daily compaction。
 
 ### buildAgentRuntime
 
@@ -741,17 +739,21 @@ evidence = legacy:<file>
 
 迁移不删除 legacy topic markdown 文件。后续清理由单独 maintenance task 处理。
 
-## Daily memory 兼容
+## Daily memory 删除
 
-Phase 3 后，`daily.md` 仍可作为 short-term source 保留一段迁移窗口，但不再是 durable memory 的唯一入口。
+Phase 3 后删除 `daily.md` 这条短期记忆路径，避免 trace-based candidates 和 daily summaries 同时存在造成重复、冲突和调试成本。
 
-推荐行为：
+目标行为：
 
-- `maybeAppendDailySummary()` 可继续写 `daily.md`，但 candidate extractor 应直接读取 finalized run trace。
-- `compactDailyIfNeeded()` 可以迁移为“从 daily summaries 生成 candidates”，再走同一 validator/lifecycle。
-- 旧的 `compactMemories()` 不再直接写 `MEMORY.md` topic file，而是写 typed store。
+- 不再创建 `.cyrene/memory/daily.md`。
+- 不再向 `daily.md` 写新内容。
+- 不再从 `daily.md` 注入 prompt。
+- `scripts/setup-local-state.mjs` 不再创建 `daily.md`。
+- `maybeAppendDailySummary()` 和 `compactDailyIfNeeded()` 从 runtime path 移除。
+- 如果 migration 时发现已有 `daily.md` 且非空，把它作为 legacy source 读一次，生成 candidates 后写入 `events.jsonl`，再 archive 或删除原文件。
+- 如果已有 `daily.md` 为空，直接删除。
 
-这样保留当前测试和行为的连续性，同时把 durable write 统一到 typed pipeline。
+这样 durable write 只剩一条入口：finalized run trace → candidate extractor → validator/lifecycle → typed store。
 
 ## CLI memory commands
 
@@ -861,7 +863,8 @@ memoryAutoExtractEnabled: true
 - Web run 使用 record id 作为 evidence runId。
 - REPL 每 turn 使用最新 active memory context。
 - legacy `MEMORY.md` 迁移后生成 `index.jsonl` 和 projection。
-- daily compaction 走 typed lifecycle，不直接写 legacy topic file。
+- runtime 不再创建、写入或加载 `daily.md`。
+- 非空 legacy `daily.md` 迁移后 archive/delete，空 `daily.md` 直接删除。
 
 ## 验收标准
 
@@ -879,6 +882,7 @@ memoryAutoExtractEnabled: true
 [ ] MEMORY.md 由 index.jsonl 自动生成
 [ ] legacy MEMORY.md 可迁移到 typed store
 [ ] CLI/Web/REPL run 后都能 best-effort 自动处理 memory candidates
+[ ] daily.md 不再创建、写入或注入 prompt
 [ ] npm test 通过
 [ ] npm run typecheck 通过
 ```
