@@ -1,4 +1,4 @@
-import { mkdtemp, readFile, rm } from 'node:fs/promises'
+import { mkdtemp, readFile, readdir, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
@@ -87,5 +87,30 @@ describe('trace-store', () => {
         userMessage: { role: 'user', content: 'hello' }
       }
     })).rejects.toThrow('Unsafe trace run id')
+  })
+
+  it('keeps only the most recent 100 trace runs', async () => {
+    const cwd = await createTempDir()
+
+    for (let index = 0; index <= 100; index += 1) {
+      const runId = `run-${String(index).padStart(3, '0')}`
+      await createTraceRun({
+        cwd,
+        runId,
+        input: {
+          runId,
+          mode: 'cli',
+          cwd,
+          startedAt: `2026-05-23T00:${String(index).padStart(2, '0')}:00.000Z`,
+          userMessage: { role: 'user', content: runId }
+        }
+      })
+    }
+
+    const runs = await readdir(join(cwd, '.cyrene', 'runs'))
+    expect(runs).toHaveLength(100)
+    expect(runs).not.toContain('run-000')
+    expect(runs).toContain('run-001')
+    expect(runs).toContain('run-100')
   })
 })

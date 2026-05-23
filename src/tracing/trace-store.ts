@@ -1,4 +1,4 @@
-import { appendFile, mkdir, realpath, writeFile } from 'node:fs/promises'
+import { appendFile, mkdir, readdir, realpath, rm, stat, writeFile } from 'node:fs/promises'
 import { randomUUID } from 'node:crypto'
 import { join, resolve, sep } from 'node:path'
 import type {
@@ -8,6 +8,8 @@ import type {
   TraceModelCallLine,
   TraceToolCallLine
 } from './types.js'
+
+const DEFAULT_TRACE_RUN_LIMIT = 100
 
 export interface CreateTraceRunInput {
   cwd: string
@@ -30,6 +32,7 @@ export async function createTraceRun(input: CreateTraceRunInput): Promise<TraceR
   const dir = traceRunDir(input.cwd, runId)
   await ensureTraceDir(input.cwd, dir)
   await writeJson(join(dir, 'input.json'), { ...input.input, runId })
+  await pruneTraceRuns(input.cwd, runId).catch(() => undefined)
 
   return {
     runId,
@@ -81,4 +84,37 @@ async function appendJsonLine(path: string, value: unknown): Promise<void> {
 
 async function writeJson(path: string, value: unknown): Promise<void> {
   await writeFile(path, `${JSON.stringify(value, null, 2)}\n`, 'utf8')
+}
+
+async function pruneTraceRuns(cwd: string, currentRunId: string): Promise<void> {
+  const root = tracesDir(cwd)
+  const entries = (await readdir(root, { withFileTypes: true })).filter((entry) => {
+    if (!entry.isDirectory() || entry.name === currentRunId) {
+      return false
+    }
+
+    try {
+      assertSafeTraceRunId(entry.name)
+      return true
+    } catch {
+      return false
+    }
+  })
+
+  const overflowCount = entries.length + 1 - DEFAULT_TRACE_RUN_LIMIT
+  if (overflowCount <= 0) {
+    return
+  }
+
+  const candidates = await Promise.all(entries.map(async (entry) => ({
+    name: entry.name,
+    mtimeMs: (await stat(join(root, entry.name))).mtimeMs
+  })))
+  candidates.sort((left, right) => left.mtimeMs - right.mtimeMs || left.name.localeCompare(right.name))
+
+  await Promise.all(
+    candidates.slice(0, overflowCount).map((candidate) =>
+      rm(join(root, candidate.name), { recursive: true, force: true })
+    )
+  )
 }
