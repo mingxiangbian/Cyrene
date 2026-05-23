@@ -1,26 +1,23 @@
 import { homedir } from 'node:os'
-import { dirname, isAbsolute, join, resolve } from 'node:path'
-import { fileURLToPath } from 'node:url'
+import { join } from 'node:path'
 
 export interface ModelConfig {
   baseUrl: string
   model: string
+  apiKey?: string
   temperature: number
 }
 
-export interface T2IConfig {
-  baseUrl: string
-  outputDir: string
-  autoStart: boolean
-  startCommand: string
-  startTimeoutMs: number
-  generateTimeoutMs: number
+export interface FeatureFlags {
+  bashEnabled: boolean
+  webSearchEnabled: boolean
+  mcpEnabled: boolean
 }
 
 export interface AppConfig {
   cwd: string
   model: ModelConfig
-  t2i: T2IConfig
+  features: FeatureFlags
   maxToolCallsPerTurn: number
   contextWindowTokens: number
   autoCompactThreshold: number
@@ -62,35 +59,19 @@ function parsePositiveIntEnv(value: string | undefined, defaultValue: number): n
   return Number.isFinite(parsed) && parsed > 0 ? parsed : defaultValue
 }
 
-const appRoot = dirname(dirname(fileURLToPath(import.meta.url)))
-
-function resolveStartCommand(command: string): string {
-  if (isAbsolute(command)) {
-    return command
-  }
-  if (command.startsWith('./') || command.startsWith('../')) {
-    return resolve(appRoot, command)
-  }
-  return command
-}
-
 export function createDefaultConfig(cwd: string): AppConfig {
-  const t2iStartCommand = process.env.T2I_START_COMMAND ?? './server/start-t2i.sh'
-
   return {
     cwd,
     model: {
-      baseUrl: process.env.CYRENE_BASE_URL ?? 'http://127.0.0.1:8080/v1',
-      model: process.env.CYRENE_MODEL ?? 'Qwen3.5-9B-MLX-4bit',
+      baseUrl: process.env.CYRENE_BASE_URL ?? '',
+      model: process.env.CYRENE_MODEL ?? '',
+      apiKey: process.env.CYRENE_API_KEY?.trim() === '' ? undefined : process.env.CYRENE_API_KEY,
       temperature: 0
     },
-    t2i: {
-      baseUrl: process.env.T2I_BASE_URL ?? 'http://127.0.0.1:7861',
-      outputDir: process.env.T2I_OUTPUT_DIR ?? 'generated-images',
-      autoStart: parseBooleanEnv(process.env.T2I_AUTO_START, true),
-      startCommand: resolveStartCommand(t2iStartCommand),
-      startTimeoutMs: parsePositiveIntEnv(process.env.T2I_START_TIMEOUT_MS, 120_000),
-      generateTimeoutMs: parsePositiveIntEnv(process.env.T2I_GENERATE_TIMEOUT_MS, 900_000)
+    features: {
+      bashEnabled: parseBooleanEnv(process.env.CYRENE_ENABLE_BASH, true),
+      webSearchEnabled: parseBooleanEnv(process.env.CYRENE_ENABLE_WEB_SEARCH, true),
+      mcpEnabled: parseBooleanEnv(process.env.CYRENE_ENABLE_MCP, false)
     },
     maxToolCallsPerTurn: 10,
     contextWindowTokens: 256_000,

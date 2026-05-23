@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { homedir } from 'node:os'
-import { isAbsolute, join } from 'node:path'
+import { join } from 'node:path'
 import { createDefaultConfig } from '../src/config.js'
 
 describe('createDefaultConfig', () => {
@@ -8,43 +8,49 @@ describe('createDefaultConfig', () => {
     vi.unstubAllEnvs()
   })
 
-  it('uses the local MLX OpenAI-compatible endpoint by default', () => {
+  it('uses API-first model environment values', () => {
+    vi.stubEnv('CYRENE_BASE_URL', 'https://api.example.com/v1')
+    vi.stubEnv('CYRENE_MODEL', 'strong-model')
+    vi.stubEnv('CYRENE_API_KEY', 'secret-key')
+
     const config = createDefaultConfig('/tmp/project')
 
-    expect(config.model.baseUrl).toBe('http://127.0.0.1:8080/v1')
-    expect(config.model.model).toBe('Qwen3.5-9B-MLX-4bit')
+    expect(config.model.baseUrl).toBe('https://api.example.com/v1')
+    expect(config.model.model).toBe('strong-model')
+    expect(config.model.apiKey).toBe('secret-key')
     expect(config.model.temperature).toBe(0)
   })
 
-  it('uses local T2I defaults', () => {
+  it('does not invent model endpoint defaults', () => {
     const config = createDefaultConfig('/tmp/project')
 
-    expect(config.t2i.baseUrl).toBe('http://127.0.0.1:7861')
-    expect(config.t2i.outputDir).toBe('generated-images')
-    expect(config.t2i.autoStart).toBe(true)
-    expect(isAbsolute(config.t2i.startCommand)).toBe(true)
-    expect(config.t2i.startCommand.endsWith('/server/start-t2i.sh')).toBe(true)
-    expect(config.t2i.startTimeoutMs).toBe(120_000)
-    expect(config.t2i.generateTimeoutMs).toBe(900_000)
+    expect(config.model.baseUrl).toBe('')
+    expect(config.model.model).toBe('')
+    expect(config.model.apiKey).toBeUndefined()
   })
 
-  it('uses local T2I environment overrides when present', () => {
-    vi.stubEnv('T2I_BASE_URL', 'http://127.0.0.1:9998')
-    vi.stubEnv('T2I_OUTPUT_DIR', 'custom-images')
-    vi.stubEnv('T2I_AUTO_START', '0')
-    vi.stubEnv('T2I_START_COMMAND', './custom-t2i.sh')
-    vi.stubEnv('T2I_START_TIMEOUT_MS', '45000')
-    vi.stubEnv('T2I_GENERATE_TIMEOUT_MS', '60000')
+  it('uses startup-time manual feature flag defaults', () => {
+    const config = createDefaultConfig('/tmp/project')
+
+    expect(config.features).toEqual({
+      bashEnabled: true,
+      webSearchEnabled: true,
+      mcpEnabled: false
+    })
+  })
+
+  it('uses feature flag environment overrides', () => {
+    vi.stubEnv('CYRENE_ENABLE_BASH', '0')
+    vi.stubEnv('CYRENE_ENABLE_WEB_SEARCH', 'false')
+    vi.stubEnv('CYRENE_ENABLE_MCP', '1')
 
     const config = createDefaultConfig('/tmp/project')
 
-    expect(config.t2i.baseUrl).toBe('http://127.0.0.1:9998')
-    expect(config.t2i.outputDir).toBe('custom-images')
-    expect(config.t2i.autoStart).toBe(false)
-    expect(isAbsolute(config.t2i.startCommand)).toBe(true)
-    expect(config.t2i.startCommand.endsWith('/custom-t2i.sh')).toBe(true)
-    expect(config.t2i.startTimeoutMs).toBe(45_000)
-    expect(config.t2i.generateTimeoutMs).toBe(60_000)
+    expect(config.features).toEqual({
+      bashEnabled: false,
+      webSearchEnabled: false,
+      mcpEnabled: true
+    })
   })
 
   it('keeps v1 safety and context limits explicit', () => {
@@ -114,8 +120,8 @@ describe('createDefaultConfig', () => {
 
     const config = createDefaultConfig('/tmp/project')
 
-    expect(config.model.baseUrl).toBe('http://127.0.0.1:8080/v1')
-    expect(config.model.model).toBe('Qwen3.5-9B-MLX-4bit')
+    expect(config.model.baseUrl).toBe('')
+    expect(config.model.model).toBe('')
   })
 
   it('ignores deprecated CC_LOCAL model environment variables', () => {
@@ -124,7 +130,7 @@ describe('createDefaultConfig', () => {
 
     const config = createDefaultConfig('/tmp/project')
 
-    expect(config.model.baseUrl).toBe('http://127.0.0.1:8080/v1')
-    expect(config.model.model).toBe('Qwen3.5-9B-MLX-4bit')
+    expect(config.model.baseUrl).toBe('')
+    expect(config.model.model).toBe('')
   })
 })
