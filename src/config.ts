@@ -34,9 +34,6 @@ export interface AppConfig {
   snipKeepRounds: number
   microcompactKeepRecentRounds: number
   userCyreneDir: string
-  dailyCompactThreshold: number
-  dailyLoadLines: number
-  dailySummaryMaxLength: number
   sessionResumeRecentMessages: number
   memoryAutoExtractEnabled: boolean
   memoryMaxLines: number
@@ -171,9 +168,6 @@ export function createDefaultConfig(cwd: string): AppConfig {
     snipKeepRounds: 15,
     microcompactKeepRecentRounds: 5,
     userCyreneDir: join(homedir(), '.cyrene'),
-    dailyCompactThreshold: 500,
-    dailyLoadLines: 200,
-    dailySummaryMaxLength: 400,
     sessionResumeRecentMessages: 40,
     memoryAutoExtractEnabled: parseBooleanEnv(envValue(dotEnv, 'CYRENE_MEMORY_AUTO_EXTRACT'), true),
     memoryMaxLines: 200,

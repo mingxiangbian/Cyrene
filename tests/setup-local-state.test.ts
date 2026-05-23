@@ -19,7 +19,7 @@ async function createTempDir(): Promise<string> {
 }
 
 describe('setup-local-state', () => {
-  it('creates workspace plus local persona, rule, and daily memory files', async () => {
+  it('creates workspace plus local persona, rule, and personal memory directories', async () => {
     const root = await createTempDir()
 
     await execFileAsync(process.execPath, [join(process.cwd(), 'scripts/setup-local-state.mjs')], { cwd: root })
@@ -27,6 +27,10 @@ describe('setup-local-state', () => {
     await expect(access(join(root, 'workspace'))).resolves.toBeUndefined()
     await expect(readFile(join(root, '.cyrene', 'Soul.md'), 'utf8')).resolves.toBe('')
     await expect(readFile(join(root, '.cyrene', 'Rule.md'), 'utf8')).resolves.toBe('')
-    await expect(readFile(join(root, '.cyrene', 'memory', 'daily.md'), 'utf8')).resolves.toBe('')
+    await expect(access(join(root, '.cyrene', 'memory', 'projections'))).resolves.toBeUndefined()
+    await expect(access(join(root, '.cyrene', 'memory', 'snapshots'))).resolves.toBeUndefined()
+    await expect(readFile(join(root, '.cyrene', 'memory', 'daily.md'), 'utf8')).rejects.toMatchObject({
+      code: 'ENOENT'
+    })
   })
 })

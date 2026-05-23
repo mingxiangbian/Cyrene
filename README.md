@@ -35,9 +35,10 @@ cp .env.example .env
 - `workspace/`
 - `.cyrene/Soul.md`
 - `.cyrene/Rule.md`
-- `.cyrene/memory/daily.md`
+- `.cyrene/memory/projections/`
+- `.cyrene/memory/snapshots/`
 
-Project persona and rules are read from `.cyrene/Soul.md` and `.cyrene/Rule.md`. Project daily memory is stored in `.cyrene/memory/daily.md`. Global persona, rules, and global memories are read from `~/.cyrene/` when those files exist.
+Project persona and rules are read from `.cyrene/Soul.md` and `.cyrene/Rule.md`. Long-term memory is stored in `.cyrene/memory/index.jsonl`, with pending candidates, audit events, tombstones, snapshots, and generated Markdown projections under `.cyrene/memory/`. Global persona and rules are read from `~/.cyrene/` when those files exist.
 
 Edit `.env` before running agent tasks. `CYRENE_BASE_URL` and `CYRENE_MODEL` are required; `CYRENE_API_KEY` is optional for local servers and usually required for remote HTTPS endpoints.
 
@@ -100,6 +101,27 @@ npm run dev -- config doctor
 ```
 
 The doctor reports model endpoint fields, provider routing, strong and cheap model names, thinking mode, active interactive context window, configured tool flags, the optional local fallback script, and the current image-generation status.
+
+## Personal Memory Core
+
+Cyrene uses a controlled automatic personal memory core. `index.jsonl` is the source of truth; Markdown files are generated projections for inspection. Web, REPL, and one-shot runs can extract memory candidates automatically after a model response. High-quality low-risk candidates become active memory, lower-confidence candidates go to `pending.jsonl`, and rejected candidates are recorded in `events.jsonl`.
+
+Useful inspection commands:
+
+```bash
+npm run dev -- memory list
+npm run dev -- memory pending
+npm run dev -- memory events --limit 20
+npm run dev -- memory search "direct engineering advice"
+npm run dev -- memory snapshot create "before manual verification"
+npm run dev -- memory snapshot list
+```
+
+To migrate an older `.cyrene/memory/` directory that still has Markdown memory files:
+
+```bash
+npm run dev -- memory migrate
+```
 
 ## Context And Web UI
 
