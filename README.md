@@ -1,6 +1,6 @@
 # Cyrene
 
-Local TypeScript agent runtime with a web UI, REPL mode, project-local memory, and file tools scoped to a workspace.
+API-first TypeScript agent runtime with a web UI, REPL mode, project-local memory, and file tools scoped to a workspace.
 
 ## Repository
 
@@ -11,9 +11,9 @@ Local TypeScript agent runtime with a web UI, REPL mode, project-local memory, a
 
 ## Portability Status
 
-The Node application is portable across normal Node environments. A local model server is required at runtime, but it only needs to expose an OpenAI-compatible chat completions API.
+The Node application is portable across normal Node environments. A configured model endpoint is required at runtime, and it only needs to expose an OpenAI-compatible chat completions API.
 
-The included `server/start.sh` is a convenience launcher for an MLX/Qwen setup. That path is optional and is mainly useful on Apple Silicon machines with `mlx_lm` installed and the model files available locally.
+The included `server/start.sh` is a convenience launcher for an MLX/Qwen setup. That path is an optional local fallback and is mainly useful on Apple Silicon machines with `mlx_lm` installed and the model files available locally.
 
 ## Requirements
 
@@ -37,7 +37,7 @@ cp .env.example .env
 
 Global persona, rules, and global memories are read from `~/.cyrene/` when those files exist.
 
-Edit `.env` if your model endpoint or model name differs from the defaults.
+Edit `.env` before running agent tasks. `CYRENE_BASE_URL` and `CYRENE_MODEL` are required; `CYRENE_API_KEY` is optional for local servers and usually required for remote HTTPS endpoints.
 
 ## Run
 
@@ -58,14 +58,37 @@ The web UI uses `workspace/` as its root. Create child directories inside `works
 
 ## Model Endpoint
 
-By default the app expects:
+Set these values in `.env` or your shell:
 
 ```bash
-CYRENE_BASE_URL=http://127.0.0.1:8080/v1
-CYRENE_MODEL=Qwen3.5-9B-MLX-4bit
+CYRENE_BASE_URL=https://api.example.com/v1
+CYRENE_MODEL=strong-model-name
+CYRENE_API_KEY=provider-key-if-needed
 ```
 
-Override those values in `.env` or your shell to point at any compatible server.
+Missing `CYRENE_BASE_URL` or `CYRENE_MODEL` fails fast before the first model request. A remote HTTPS endpoint without `CYRENE_API_KEY` is allowed, but `config doctor` prints a warning because most hosted APIs require a bearer token.
+
+## Config Doctor
+
+Check the effective runtime configuration with:
+
+```bash
+npm run dev -- config doctor
+```
+
+The doctor reports model endpoint fields, configured tool flags, the optional local fallback script, and the current image-generation status.
+
+## Feature Flags
+
+Core tool flags are manual startup-time settings. When a flag is disabled, that tool is omitted from the tool schema sent to the model:
+
+```bash
+CYRENE_ENABLE_BASH=1
+CYRENE_ENABLE_WEB_SEARCH=1
+CYRENE_ENABLE_MCP=0
+```
+
+`bash` and `web_search` default to enabled. `mcp` defaults to disabled until MCP capability wiring is added.
 
 ## Optional MLX Server
 
@@ -82,88 +105,11 @@ If no variables are provided, it uses:
 - `PORT=8080`
 - `PYTHON=./.venv/bin/python`, falling back to `python3` or `python`
 
-## Optional Local Image Generation
+## Image Generation
 
-The agent can call a local SD1.5 text-to-image worker through the `generate_image` tool. The worker is optional; normal chat, REPL, and web UI flows still work without it.
+Legacy local T2I support has been removed from runtime. There is no built-in `generate_image` tool and no Web image-generation toggle, because there is no image-generation capability to expose.
 
-Place local image assets under the ignored `T2I/` directory. The current defaults expect:
-
-- `T2I/majicmixRealistic_v7.safetensors`
-- `T2I/adetailer/face_yolov8n.pt`
-- `T2I/adetailer/hand_yolov8n.pt`
-- `T2I/adetailer/person_yolov8n-seg.pt`
-
-Start the worker with:
-
-```bash
-./server/start-t2i.sh
-```
-
-The launcher creates and reuses `.venv-t2i`, installs `requirements-t2i.txt` when needed, and defaults to Hugging Face offline mode for local safetensors checkpoints. Detail detector dependencies remain opt-in:
-
-```bash
-T2I_INSTALL_DETAIL_DEPS=1 ./server/start-t2i.sh
-```
-
-Useful overrides:
-
-```bash
-T2I_BASE_URL=http://127.0.0.1:7861
-T2I_MODEL_PATH=./T2I/majicmixRealistic_v7.safetensors
-T2I_OUTPUT_DIR=generated-images
-T2I_AUTO_START=1
-T2I_START_COMMAND=./server/start-t2i.sh
-T2I_START_TIMEOUT_MS=120000
-T2I_GENERATE_TIMEOUT_MS=900000
-T2I_FACE_DETECTOR_MODEL=./T2I/adetailer/face_yolov8n.pt
-T2I_HAND_DETECTOR_MODEL=./T2I/adetailer/hand_yolov8n.pt
-T2I_PERSON_DETECTOR_MODEL=./T2I/adetailer/person_yolov8n-seg.pt
-```
-
-Generated files are written under `T2I_OUTPUT_DIR`, resolved relative to the active workspace. In the web UI that means the selected workspace, so Markdown image links such as `![image](generated-images/example.png)` can be previewed through the workspace file viewer.
-
-Before each generation, `generate_image` checks the worker `/health` endpoint. The health payload includes the loaded model, optional detail dependency availability, and configured detector model paths. Requests that need face, hand, or person refinement fail early when the required detector is missing. If the worker is already running, it is reused and left running. If it is unavailable and `T2I_AUTO_START` is enabled, the tool starts `T2I_START_COMMAND`, waits up to `T2I_START_TIMEOUT_MS`, generates the image with a `T2I_GENERATE_TIMEOUT_MS` timeout, then stops only the worker process it started. If auto-start is disabled or startup times out, the tool returns the manual start command and captured worker startup output in the error message.
-
-The `generate_image` tool supports:
-
-- base text-to-image parameters: `prompt`, `negative_prompt`, `width`, `height`, `steps`, `cfg_scale`, `seed`, `count`
-- realism defaults with `realism_preset`
-- M3-safe defaults with `safe_preset` enabled by default
-- Dynamic Thresholding-style CFG control with `dynamic_thresholding`, `dynamic_thresholding_mimic_scale`, and `dynamic_thresholding_percentile`
-- Hires-style upscaling with `hires_fix`, `hires_scale`, `hires_steps`, `hires_denoise`
-- ADetailer-style local refinement with `detail_enhance`, `detail_targets`, `detail_strength`
-- eye-area refinement with `eye_refine`, `eye_refine_strength`, `eye_refine_steps`
-- lightweight BMAB-like postprocess with `bmab_postprocess`, `bmab_noise_alpha`, `bmab_contrast`, `bmab_brightness`, `bmab_color_temperature`
-
-By default, `safe_preset` applies an M3 16 GB profile: 512x768 base generation, one image, 20 steps, CFG 7, hires 2x with 15 img2img steps, low denoise, face/eye refinement, BMAB-like postprocess, and Dynamic Thresholding metadata. Set `safe_preset` to `false` when you intentionally want manual dimensions, counts, CFG, or experimental settings.
-
-The current hires path does not require ESRGAN, UltraSharp, or NMKD `.pth` upscaler weights. It uses deterministic local resizing followed by low-denoise img2img refinement. Real local upscaler weights should be added through a separate design once a specific weight file and dependency path are selected.
-
-For realistic portraits, a conservative starting point is:
-
-```json
-{
-  "width": 512,
-  "height": 768,
-  "steps": 20,
-  "cfg_scale": 7,
-  "hires_fix": true,
-  "hires_scale": 2,
-  "hires_steps": 15,
-  "hires_denoise": 0.15,
-  "detail_enhance": true,
-  "detail_targets": "face",
-  "detail_strength": 0.1,
-  "eye_refine": true,
-  "eye_refine_strength": 0.12,
-  "eye_refine_steps": 12,
-  "bmab_postprocess": true,
-  "bmab_noise_alpha": 0.05,
-  "bmab_contrast": 0.9,
-  "bmab_brightness": 1.1,
-  "bmab_color_temperature": 15
-}
-```
+Future image generation should be added through the capability/plugin system so the provider, API key, local model path, and tool schema can be owned by that plugin instead of hard-coded into the core runtime.
 
 ## Tests
 
