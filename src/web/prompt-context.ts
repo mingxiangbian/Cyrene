@@ -27,11 +27,11 @@ export async function buildAgentRuntime(cwd: string, currentDate = new Date()): 
   const config = createDefaultConfig(resolve(cwd))
   const baseSystemPrompt = await readFile(systemPromptPath, 'utf8')
   const currentDateText = formatLocalDate(currentDate)
-  const persona = await loadSoul(config.userJarvisDir)
-  const rules = await loadRuleStack(config.cwd, config.userJarvisDir)
+  const persona = await loadSoul(config.userCyreneDir)
+  const rules = await loadRuleStack(config.cwd, config.userCyreneDir)
   const projectInstructions = await loadInstructionsIfExists(config.cwd)
   const projectMemories = await loadProjectMemories(config.cwd)
-  const globalMemories = await loadGlobalMemories(config.userJarvisDir)
+  const globalMemories = await loadGlobalMemories(config.userCyreneDir)
   const daily = await loadDaily(config.cwd, config.dailyLoadLines)
   const systemPrompt = [
     baseSystemPrompt.trimEnd(),

@@ -1061,7 +1061,7 @@ describe('startWebServer', () => {
     expect(callModel).toHaveBeenCalledTimes(2)
     expect(modelMessages[1][0]).toEqual(expect.objectContaining({
       role: 'system',
-      content: expect.stringContaining('You are Jarvis')
+      content: expect.stringContaining('You are Cyrene')
     }))
     expect(modelMessages[1].slice(1)).toEqual([
       { role: 'user', content: 'hello web' },
@@ -1375,7 +1375,7 @@ describe('startWebServer', () => {
     const createBody = (await createResponse.json()) as { runId: string; sessionId: string }
     await readRunEventStream(`${server.url}/api/runs/${createBody.runId}/events`)
 
-    const sessionPath = join(cwd, '.jarvis', 'sessions', `${createBody.sessionId}.jsonl`)
+    const sessionPath = join(cwd, '.cyrene', 'sessions', `${createBody.sessionId}.jsonl`)
     await rm(sessionPath)
     await symlink(tmpdir(), sessionPath)
 
@@ -1506,14 +1506,14 @@ async function startServer(
 }
 
 async function createTempCwd(): Promise<string> {
-  const cwd = await realpath(await mkdtemp(join(tmpdir(), 'jarvis-web-server-')))
+  const cwd = await realpath(await mkdtemp(join(tmpdir(), 'cyrene-web-server-')))
   await mkdir(join(cwd, 'workspace'))
   tempDirs.push(cwd)
   return cwd
 }
 
 async function createTempCwdWithoutWorkspace(): Promise<string> {
-  const cwd = await realpath(await mkdtemp(join(tmpdir(), 'jarvis-web-server-')))
+  const cwd = await realpath(await mkdtemp(join(tmpdir(), 'cyrene-web-server-')))
   tempDirs.push(cwd)
   return cwd
 }

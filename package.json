@@ -1,9 +1,9 @@
 {
-  "name": "jarvis",
+  "name": "cyrene",
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "bin": { "jarvis": "src/main.ts" },
+  "bin": { "cyrene": "src/main.ts" },
   "engines": {
     "node": ">=20",
     "npm": ">=10"

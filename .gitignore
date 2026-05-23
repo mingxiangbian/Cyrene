@@ -11,7 +11,7 @@ coverage/
 .worktrees/
 .superpowers/
 .codegraph/
-.jarvis/
+.cyrene/
 data/
 workspace/
 docs/superpowers/plans/

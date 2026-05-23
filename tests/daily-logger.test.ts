@@ -7,7 +7,7 @@ import { appendDaily } from '../src/daily-logger.js'
 const tempDirs: string[] = []
 
 async function createTempDir(): Promise<string> {
-  const dir = await mkdtemp(join(tmpdir(), 'jarvis-daily-'))
+  const dir = await mkdtemp(join(tmpdir(), 'cyrene-daily-'))
   tempDirs.push(dir)
   return dir
 }
@@ -23,7 +23,7 @@ describe('appendDaily', () => {
     await appendDaily(root, ['[09:08] bash -> ok exit 0'])
     await appendDaily(root, ['[09:09] file_read -> ok src/config.ts'])
 
-    await expect(readFile(join(root, '.jarvis', 'memory', 'daily.md'), 'utf8')).resolves.toBe(
+    await expect(readFile(join(root, '.cyrene', 'memory', 'daily.md'), 'utf8')).resolves.toBe(
       '[09:08] bash -> ok exit 0\n[09:09] file_read -> ok src/config.ts\n'
     )
   })
@@ -33,7 +33,7 @@ describe('appendDaily', () => {
 
     await appendDaily(root, [])
 
-    await expect(readFile(join(root, '.jarvis', 'memory', 'daily.md'), 'utf8')).rejects.toMatchObject({
+    await expect(readFile(join(root, '.cyrene', 'memory', 'daily.md'), 'utf8')).rejects.toMatchObject({
       code: 'ENOENT'
     })
   })
@@ -41,7 +41,7 @@ describe('appendDaily', () => {
   it('refuses to append through a symlinked daily file', async () => {
     const root = await createTempDir()
     const outside = await createTempDir()
-    const memoryDir = join(root, '.jarvis', 'memory')
+    const memoryDir = join(root, '.cyrene', 'memory')
     await mkdir(memoryDir, { recursive: true })
     await writeFile(join(outside, 'daily.md'), 'outside\n')
     await symlink(join(outside, 'daily.md'), join(memoryDir, 'daily.md'))
@@ -50,13 +50,13 @@ describe('appendDaily', () => {
     await expect(readFile(join(outside, 'daily.md'), 'utf8')).resolves.toBe('outside\n')
   })
 
-  it('refuses to append through a symlinked .jarvis directory', async () => {
+  it('refuses to append through a symlinked .cyrene directory', async () => {
     const root = await createTempDir()
-    const outsideJarvis = await createTempDir()
-    await symlink(outsideJarvis, join(root, '.jarvis'))
+    const outsideCyrene = await createTempDir()
+    await symlink(outsideCyrene, join(root, '.cyrene'))
 
     await expect(appendDaily(root, ['[09:08] bash -> ok'])).rejects.toThrow(/symlink/)
-    await expect(readFile(join(outsideJarvis, 'memory', 'daily.md'), 'utf8')).rejects.toMatchObject({
+    await expect(readFile(join(outsideCyrene, 'memory', 'daily.md'), 'utf8')).rejects.toMatchObject({
       code: 'ENOENT'
     })
   })

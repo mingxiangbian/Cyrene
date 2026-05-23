@@ -15,7 +15,7 @@ interface MemoryIndexLine {
 
 export async function loadInstructionsIfExists(cwd: string): Promise<string> {
   try {
-    const content = await readFile(join(cwd, '.jarvis', 'instructions.md'), 'utf8')
+    const content = await readFile(join(cwd, '.cyrene', 'instructions.md'), 'utf8')
     return `## Project Instructions\n\n${content}`
   } catch (error) {
     if (isMissingFileError(error)) {
@@ -26,14 +26,14 @@ export async function loadInstructionsIfExists(cwd: string): Promise<string> {
   }
 }
 
-export async function loadSoul(userJarvisDir: string): Promise<string> {
-  const content = await readRegularTextFileIfExists(join(userJarvisDir, 'soul.md'))
+export async function loadSoul(userCyreneDir: string): Promise<string> {
+  const content = await readRegularTextFileIfExists(join(userCyreneDir, 'soul.md'))
   return content === '' ? '' : `## Global Persona\n\n${content}`
 }
 
-export async function loadRuleStack(cwd: string, userJarvisDir: string): Promise<string> {
+export async function loadRuleStack(cwd: string, userCyreneDir: string): Promise<string> {
   const sections: string[] = []
-  const globalRule = await readRegularTextFileIfExists(join(userJarvisDir, 'Rule.md'))
+  const globalRule = await readRegularTextFileIfExists(join(userCyreneDir, 'Rule.md'))
   if (globalRule !== '') {
     sections.push(`## Global Rule\n\n${globalRule}`)
   }
@@ -42,7 +42,7 @@ export async function loadRuleStack(cwd: string, userJarvisDir: string): Promise
   let homeRealPath: string
   try {
     cwdRealPath = await realpath(cwd)
-    homeRealPath = await realpath(dirname(userJarvisDir))
+    homeRealPath = await realpath(dirname(userCyreneDir))
   } catch (error) {
     if (isMissingFileError(error)) {
       return sections.join('\n\n')
@@ -52,7 +52,7 @@ export async function loadRuleStack(cwd: string, userJarvisDir: string): Promise
   }
 
   for (const currentDir of getRuleStackDirectories(cwdRealPath, homeRealPath)) {
-    const rule = await readRegularTextFileIfExists(join(currentDir, '.jarvis', 'Rule.md'))
+    const rule = await readRegularTextFileIfExists(join(currentDir, '.cyrene', 'Rule.md'))
     if (rule !== '') {
       sections.push(`## Rule: ${currentDir}\n\n${rule}`)
     }
@@ -62,15 +62,15 @@ export async function loadRuleStack(cwd: string, userJarvisDir: string): Promise
 }
 
 export async function loadMemories(cwd: string): Promise<string> {
-  const memoryDir = join(cwd, '.jarvis', 'memory')
+  const memoryDir = join(cwd, '.cyrene', 'memory')
   const cwdRealPath = await realpath(cwd)
-  const intendedJarvisDir = join(cwdRealPath, '.jarvis')
+  const intendedCyreneDir = join(cwdRealPath, '.cyrene')
   let memoryDirRealPath: string
   let index: string
 
   try {
     memoryDirRealPath = await realpath(memoryDir)
-    if (!isPathInside(intendedJarvisDir, memoryDirRealPath)) {
+    if (!isPathInside(intendedCyreneDir, memoryDirRealPath)) {
       return ''
     }
 
@@ -159,8 +159,8 @@ export async function loadProjectMemories(cwd: string): Promise<string> {
   return memoryDir === null ? '' : loadMemoryScope(memoryDir, 'Project Memory')
 }
 
-export async function loadGlobalMemories(userJarvisDir: string): Promise<string> {
-  return loadMemoryScope(join(userJarvisDir, 'memory'), 'Global Memory')
+export async function loadGlobalMemories(userCyreneDir: string): Promise<string> {
+  return loadMemoryScope(join(userCyreneDir, 'memory'), 'Global Memory')
 }
 
 export async function loadMemoryScope(memoryDir: string, heading: string): Promise<string> {
@@ -275,15 +275,15 @@ export async function loadRecentSummaries(cwd: string, count: number): Promise<s
     return ''
   }
 
-  const sessionsDir = join(cwd, '.jarvis', 'memory', 'sessions')
+  const sessionsDir = join(cwd, '.cyrene', 'memory', 'sessions')
   const cwdRealPath = await realpath(cwd)
-  const intendedJarvisDir = join(cwdRealPath, '.jarvis')
+  const intendedCyreneDir = join(cwdRealPath, '.cyrene')
   let sessionsDirRealPath: string
   let files: string[]
 
   try {
     sessionsDirRealPath = await realpath(sessionsDir)
-    if (!isPathInside(intendedJarvisDir, sessionsDirRealPath)) {
+    if (!isPathInside(intendedCyreneDir, sessionsDirRealPath)) {
       return ''
     }
 
@@ -480,18 +480,18 @@ export async function updateMemoryIndex(
 
 export async function getWritableMemoryDir(cwd: string): Promise<string> {
   const cwdRealPath = await realpath(cwd)
-  const jarvisDir = await ensureWritableDirectory(join(cwdRealPath, '.jarvis'), cwdRealPath)
-  return ensureWritableDirectory(join(jarvisDir, 'memory'), jarvisDir)
+  const cyreneDir = await ensureWritableDirectory(join(cwdRealPath, '.cyrene'), cwdRealPath)
+  return ensureWritableDirectory(join(cyreneDir, 'memory'), cyreneDir)
 }
 
 async function getReadableProjectMemoryDir(cwd: string): Promise<string | null> {
   const cwdRealPath = await realpath(cwd)
-  const jarvisDir = await getReadableDirectoryOrNull(join(cwdRealPath, '.jarvis'), cwdRealPath)
-  if (jarvisDir === null) {
+  const cyreneDir = await getReadableDirectoryOrNull(join(cwdRealPath, '.cyrene'), cwdRealPath)
+  if (cyreneDir === null) {
     return null
   }
 
-  return getReadableDirectoryOrNull(join(jarvisDir, 'memory'), jarvisDir)
+  return getReadableDirectoryOrNull(join(cyreneDir, 'memory'), cyreneDir)
 }
 
 async function getReadableDirectoryOrNull(dirPath: string, parentRealPath: string): Promise<string | null> {

@@ -29,7 +29,7 @@ export interface AppConfig {
   collapseThreshold: number
   snipKeepRounds: number
   microcompactKeepRecentRounds: number
-  userJarvisDir: string
+  userCyreneDir: string
   dailyCompactThreshold: number
   dailyLoadLines: number
   dailySummaryMaxLength: number
@@ -80,8 +80,8 @@ export function createDefaultConfig(cwd: string): AppConfig {
   return {
     cwd,
     model: {
-      baseUrl: process.env.JARVIS_BASE_URL ?? 'http://127.0.0.1:8080/v1',
-      model: process.env.JARVIS_MODEL ?? 'Qwen3.5-9B-MLX-4bit',
+      baseUrl: process.env.CYRENE_BASE_URL ?? 'http://127.0.0.1:8080/v1',
+      model: process.env.CYRENE_MODEL ?? 'Qwen3.5-9B-MLX-4bit',
       temperature: 0
     },
     t2i: {
@@ -100,7 +100,7 @@ export function createDefaultConfig(cwd: string): AppConfig {
     collapseThreshold: 0.6,
     snipKeepRounds: 15,
     microcompactKeepRecentRounds: 5,
-    userJarvisDir: join(homedir(), '.jarvis'),
+    userCyreneDir: join(homedir(), '.cyrene'),
     dailyCompactThreshold: 500,
     dailyLoadLines: 200,
     dailySummaryMaxLength: 400,

@@ -383,7 +383,7 @@ function normalizeSessionIndexItem(item: SessionIndexItem | LegacySessionIndexIt
 }
 
 function sessionsDir(cwd: string): string {
-  return resolve(cwd, '.jarvis', 'sessions')
+  return resolve(cwd, '.cyrene', 'sessions')
 }
 
 function indexPath(cwd: string): string {

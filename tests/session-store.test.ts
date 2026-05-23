@@ -73,7 +73,7 @@ describe('session store', () => {
       ]
     })
 
-    await expect(readFile(join(cwd, '.jarvis', 'sessions', 'session-1.jsonl'), 'utf8')).resolves.toContain(
+    await expect(readFile(join(cwd, '.cyrene', 'sessions', 'session-1.jsonl'), 'utf8')).resolves.toContain(
       '"content":"History is persisted."'
     )
   })
@@ -190,7 +190,7 @@ describe('session store', () => {
         workspaceId: 'project-a'
       })
     ])
-    await expect(readFile(join(cwd, '.jarvis', 'sessions', 'index.json'), 'utf8')).resolves.toContain(
+    await expect(readFile(join(cwd, '.cyrene', 'sessions', 'index.json'), 'utf8')).resolves.toContain(
       '"workspaceId": "project-a"'
     )
   })
@@ -198,8 +198,8 @@ describe('session store', () => {
   it('rejects session directories that resolve outside the project', async () => {
     const cwd = await createTempCwd()
     const outside = await createTempCwd()
-    await mkdir(join(cwd, '.jarvis'), { recursive: true })
-    await symlink(outside, join(cwd, '.jarvis', 'sessions'))
+    await mkdir(join(cwd, '.cyrene'), { recursive: true })
+    await symlink(outside, join(cwd, '.cyrene', 'sessions'))
 
     await expect(listSessions(cwd)).rejects.toThrow('Session directory must stay inside the project.')
   })
@@ -267,8 +267,8 @@ describe('session store', () => {
 
   it('treats legacy index entries without pinned as unpinned', async () => {
     const cwd = await createTempCwd()
-    await mkdir(join(cwd, '.jarvis', 'sessions'), { recursive: true })
-    await writeFile(join(cwd, '.jarvis', 'sessions', 'index.json'), JSON.stringify([
+    await mkdir(join(cwd, '.cyrene', 'sessions'), { recursive: true })
+    await writeFile(join(cwd, '.cyrene', 'sessions', 'index.json'), JSON.stringify([
       {
         id: 'legacy',
         mode: 'web',
@@ -296,7 +296,7 @@ describe('session store', () => {
 
     await expect(deleteSession({ cwd, sessionId: 'delete-me' })).resolves.toBe(true)
     await expect(listSessions(cwd)).resolves.toEqual([])
-    await expect(readFile(join(cwd, '.jarvis', 'sessions', 'delete-me.jsonl'), 'utf8')).rejects.toMatchObject({
+    await expect(readFile(join(cwd, '.cyrene', 'sessions', 'delete-me.jsonl'), 'utf8')).rejects.toMatchObject({
       code: 'ENOENT'
     })
     await expect(deleteSession({ cwd, sessionId: 'delete-me' })).resolves.toBe(false)
@@ -310,7 +310,7 @@ describe('session store', () => {
       model: 'test-model',
       id: 'missing-jsonl'
     })
-    await rm(join(cwd, '.jarvis', 'sessions', 'missing-jsonl.jsonl'))
+    await rm(join(cwd, '.cyrene', 'sessions', 'missing-jsonl.jsonl'))
 
     await expect(deleteSession({ cwd, sessionId: 'missing-jsonl' })).resolves.toBe(true)
     await expect(listSessions(cwd)).resolves.toEqual([])
@@ -325,7 +325,7 @@ describe('session store', () => {
       model: 'test-model',
       id: 'symlink-session'
     })
-    const sessionPath = join(cwd, '.jarvis', 'sessions', 'symlink-session.jsonl')
+    const sessionPath = join(cwd, '.cyrene', 'sessions', 'symlink-session.jsonl')
     const outsideTarget = join(outside, 'outside-session.jsonl')
     await rm(sessionPath)
     await writeFile(outsideTarget, 'outside\n', 'utf8')
@@ -342,7 +342,7 @@ describe('session store', () => {
 })
 
 async function createTempCwd(): Promise<string> {
-  const cwd = await mkdtemp(join(tmpdir(), 'jarvis-session-store-'))
+  const cwd = await mkdtemp(join(tmpdir(), 'cyrene-session-store-'))
   tempDirs.push(cwd)
   return cwd
 }

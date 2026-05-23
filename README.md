@@ -1,4 +1,4 @@
-# Jarvis
+# Cyrene
 
 Local TypeScript agent runtime with a web UI, REPL mode, project-local memory, and file tools scoped to a workspace.
 
@@ -26,7 +26,7 @@ cp .env.example .env
 `npm run setup` creates local runtime state that is intentionally not committed:
 
 - `workspace/`
-- `.jarvis/memory/daily.md`
+- `.cyrene/memory/daily.md`
 
 Edit `.env` if your model endpoint or model name differs from the defaults.
 
@@ -52,8 +52,8 @@ The web UI uses `workspace/` as its root. Create child directories inside `works
 By default the app expects:
 
 ```bash
-JARVIS_BASE_URL=http://127.0.0.1:8080/v1
-JARVIS_MODEL=Qwen3.5-9B-MLX-4bit
+CYRENE_BASE_URL=http://127.0.0.1:8080/v1
+CYRENE_MODEL=Qwen3.5-9B-MLX-4bit
 ```
 
 Override those values in `.env` or your shell to point at any compatible server.

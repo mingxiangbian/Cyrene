@@ -97,7 +97,7 @@ describe('main CLI', () => {
 
         child.stdout.on('data', (chunk: Buffer) => {
           stdout += chunk.toString('utf8')
-          if (/jarvis web listening at http:\/\/127\.0\.0\.1:\d+/.test(stdout)) {
+          if (/cyrene web listening at http:\/\/127\.0\.0\.1:\d+/.test(stdout)) {
             clearTimeout(timeout)
             resolve()
           }
@@ -117,7 +117,7 @@ describe('main CLI', () => {
         })
       })
 
-      expect(stdout).toMatch(/jarvis web listening at http:\/\/127\.0\.0\.1:\d+\n/)
+      expect(stdout).toMatch(/cyrene web listening at http:\/\/127\.0\.0\.1:\d+\n/)
       expect(stderr).toBe('')
     } finally {
       if (child.exitCode === null && child.signalCode === null) {
@@ -128,24 +128,24 @@ describe('main CLI', () => {
   }, 15_000)
 
   it('appends soul, Rule.md stack, project/global memories, and daily memory to the system prompt', async () => {
-    const home = await mkdtemp(join(tmpdir(), 'jarvis-main-home-'))
+    const home = await mkdtemp(join(tmpdir(), 'cyrene-main-home-'))
     const root = join(home, 'workspace', 'project')
-    const userJarvisDir = join(home, '.jarvis')
-    await mkdir(join(root, '.jarvis'), { recursive: true })
-    await mkdir(join(home, 'workspace', '.jarvis'), { recursive: true })
-    await mkdir(join(userJarvisDir, 'memory'), { recursive: true })
-    await writeFile(join(userJarvisDir, 'soul.md'), 'Be direct.\n')
-    await writeFile(join(userJarvisDir, 'Rule.md'), 'Global rule.\n')
-    await writeFile(join(home, 'workspace', '.jarvis', 'Rule.md'), 'Workspace rule.\n')
-    await writeFile(join(root, '.jarvis', 'Rule.md'), 'Project rule.\n')
-    await writeFile(join(root, '.jarvis', 'instructions.md'), 'Use TDD.\n')
-    await mkdir(join(root, '.jarvis', 'memory', 'sessions'), { recursive: true })
-    await writeFile(join(root, '.jarvis', 'memory', 'MEMORY.md'), '- [Code Style](style.md) — local style\n')
-    await writeFile(join(root, '.jarvis', 'memory', 'style.md'), 'Prefer small patches.\n')
-    await writeFile(join(userJarvisDir, 'memory', 'MEMORY.md'), '- [Global Memory](global.md) — global fact\n')
-    await writeFile(join(userJarvisDir, 'memory', 'global.md'), 'Remember global fact.\n')
-    await writeFile(join(root, '.jarvis', 'memory', 'daily.md'), 'recent one\nrecent two\n')
-    await writeFile(join(root, '.jarvis', 'memory', 'sessions', '2026-05-12.md'), 'Previous session summary.\n')
+    const userCyreneDir = join(home, '.cyrene')
+    await mkdir(join(root, '.cyrene'), { recursive: true })
+    await mkdir(join(home, 'workspace', '.cyrene'), { recursive: true })
+    await mkdir(join(userCyreneDir, 'memory'), { recursive: true })
+    await writeFile(join(userCyreneDir, 'soul.md'), 'Be direct.\n')
+    await writeFile(join(userCyreneDir, 'Rule.md'), 'Global rule.\n')
+    await writeFile(join(home, 'workspace', '.cyrene', 'Rule.md'), 'Workspace rule.\n')
+    await writeFile(join(root, '.cyrene', 'Rule.md'), 'Project rule.\n')
+    await writeFile(join(root, '.cyrene', 'instructions.md'), 'Use TDD.\n')
+    await mkdir(join(root, '.cyrene', 'memory', 'sessions'), { recursive: true })
+    await writeFile(join(root, '.cyrene', 'memory', 'MEMORY.md'), '- [Code Style](style.md) — local style\n')
+    await writeFile(join(root, '.cyrene', 'memory', 'style.md'), 'Prefer small patches.\n')
+    await writeFile(join(userCyreneDir, 'memory', 'MEMORY.md'), '- [Global Memory](global.md) — global fact\n')
+    await writeFile(join(userCyreneDir, 'memory', 'global.md'), 'Remember global fact.\n')
+    await writeFile(join(root, '.cyrene', 'memory', 'daily.md'), 'recent one\nrecent two\n')
+    await writeFile(join(root, '.cyrene', 'memory', 'sessions', '2026-05-12.md'), 'Previous session summary.\n')
 
     let requestBody: unknown
     const server = createServer((request, response) => {
@@ -174,7 +174,7 @@ describe('main CLI', () => {
         {
           env: cliEnv({
             HOME: home,
-            JARVIS_BASE_URL: `http://127.0.0.1:${address.port}/v1`
+            CYRENE_BASE_URL: `http://127.0.0.1:${address.port}/v1`
           })
         }
       )
@@ -224,7 +224,7 @@ describe('main CLI', () => {
         ['node_modules/tsx/dist/cli.mjs', 'src/main.ts', 'hello'],
         {
           env: cliEnv({
-            JARVIS_BASE_URL: 'http://127.0.0.1:1/v1'
+            CYRENE_BASE_URL: 'http://127.0.0.1:1/v1'
           })
         }
       )
@@ -291,7 +291,7 @@ describe('main CLI', () => {
         ['node_modules/tsx/dist/cli.mjs', 'src/main.ts', '--cwd', process.cwd(), 'find package'],
         {
           env: cliEnv({
-            JARVIS_BASE_URL: `http://127.0.0.1:${address.port}/v1`
+            CYRENE_BASE_URL: `http://127.0.0.1:${address.port}/v1`
           })
         }
       )
@@ -368,7 +368,7 @@ describe('main CLI', () => {
         {
           env: cliEnv({
             FORCE_COLOR: '1',
-            JARVIS_BASE_URL: `http://127.0.0.1:${address.port}/v1`
+            CYRENE_BASE_URL: `http://127.0.0.1:${address.port}/v1`
           })
         }
       )
@@ -391,9 +391,9 @@ describe('main CLI', () => {
   })
 
   it('compacts daily memory after a successful one-shot run when the threshold is reached', async () => {
-    const home = await mkdtemp(join(tmpdir(), 'jarvis-main-home-'))
+    const home = await mkdtemp(join(tmpdir(), 'cyrene-main-home-'))
     const root = join(home, 'workspace')
-    const memoryDir = join(root, '.jarvis', 'memory')
+    const memoryDir = join(root, '.cyrene', 'memory')
     await mkdir(memoryDir, { recursive: true })
     const dailyContent = Array.from({ length: 500 }, (_, index) => `daily line ${index + 1}`).join('\n') + '\n'
     await writeFile(join(memoryDir, 'daily.md'), dailyContent)
@@ -453,7 +453,7 @@ describe('main CLI', () => {
         {
           env: cliEnv({
             HOME: home,
-            JARVIS_BASE_URL: `http://127.0.0.1:${address.port}/v1`
+            CYRENE_BASE_URL: `http://127.0.0.1:${address.port}/v1`
           })
         }
       )

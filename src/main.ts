@@ -11,8 +11,8 @@ const program = new Command()
 
 async function main(): Promise<void> {
   program
-    .name('jarvis')
-    .description('Jarvis local coding agent powered by an OpenAI-compatible MLX server.')
+    .name('cyrene')
+    .description('Cyrene local coding agent powered by an OpenAI-compatible MLX server.')
     .argument('[prompt...]', 'task for the agent')
     .option('--cwd <path>', 'working directory', process.cwd())
     .option('--repl', 'start an interactive session')
@@ -52,7 +52,7 @@ async function main(): Promise<void> {
 
   if (options.web) {
     const server = await startWebServer({ cwd: config.cwd, host: options.host, port })
-    console.log(`jarvis web listening at ${server.url}`)
+    console.log(`cyrene web listening at ${server.url}`)
     await new Promise(() => {})
     return
   }

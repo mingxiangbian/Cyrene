@@ -16,27 +16,27 @@ afterEach(async () => {
 
 describe('buildAgentRuntime', () => {
   it('builds shared config, system prompt, and core tools for an agent runtime', async () => {
-    const home = await mkdtemp(join(tmpdir(), 'jarvis-web-home-'))
+    const home = await mkdtemp(join(tmpdir(), 'cyrene-web-home-'))
     tempHomes.push(home)
     process.env.HOME = home
     process.env.TZ = 'Asia/Shanghai'
 
     const root = join(home, 'workspace', 'project')
-    const userJarvisDir = join(home, '.jarvis')
+    const userCyreneDir = join(home, '.cyrene')
 
-    await mkdir(join(root, '.jarvis', 'memory'), { recursive: true })
-    await mkdir(join(home, 'workspace', '.jarvis'), { recursive: true })
-    await mkdir(join(userJarvisDir, 'memory'), { recursive: true })
-    await writeFile(join(userJarvisDir, 'soul.md'), 'Be direct.\n')
-    await writeFile(join(userJarvisDir, 'Rule.md'), 'Global rule.\n')
-    await writeFile(join(home, 'workspace', '.jarvis', 'Rule.md'), 'Workspace rule.\n')
-    await writeFile(join(root, '.jarvis', 'Rule.md'), 'Project rule.\n')
-    await writeFile(join(root, '.jarvis', 'instructions.md'), 'Use TDD.\n')
-    await writeFile(join(root, '.jarvis', 'memory', 'MEMORY.md'), '- [Code Style](style.md) — local style\n')
-    await writeFile(join(root, '.jarvis', 'memory', 'style.md'), 'Prefer small patches.\n')
-    await writeFile(join(userJarvisDir, 'memory', 'MEMORY.md'), '- [Global Fact](global.md) — global fact\n')
-    await writeFile(join(userJarvisDir, 'memory', 'global.md'), 'Remember global fact.\n')
-    await writeFile(join(root, '.jarvis', 'memory', 'daily.md'), 'recent one\nrecent two\n')
+    await mkdir(join(root, '.cyrene', 'memory'), { recursive: true })
+    await mkdir(join(home, 'workspace', '.cyrene'), { recursive: true })
+    await mkdir(join(userCyreneDir, 'memory'), { recursive: true })
+    await writeFile(join(userCyreneDir, 'soul.md'), 'Be direct.\n')
+    await writeFile(join(userCyreneDir, 'Rule.md'), 'Global rule.\n')
+    await writeFile(join(home, 'workspace', '.cyrene', 'Rule.md'), 'Workspace rule.\n')
+    await writeFile(join(root, '.cyrene', 'Rule.md'), 'Project rule.\n')
+    await writeFile(join(root, '.cyrene', 'instructions.md'), 'Use TDD.\n')
+    await writeFile(join(root, '.cyrene', 'memory', 'MEMORY.md'), '- [Code Style](style.md) — local style\n')
+    await writeFile(join(root, '.cyrene', 'memory', 'style.md'), 'Prefer small patches.\n')
+    await writeFile(join(userCyreneDir, 'memory', 'MEMORY.md'), '- [Global Fact](global.md) — global fact\n')
+    await writeFile(join(userCyreneDir, 'memory', 'global.md'), 'Remember global fact.\n')
+    await writeFile(join(root, '.cyrene', 'memory', 'daily.md'), 'recent one\nrecent two\n')
 
     const runtime = await buildAgentRuntime(root, new Date('2026-05-20T16:30:00.000Z'))
 

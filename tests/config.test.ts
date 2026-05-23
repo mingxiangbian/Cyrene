@@ -63,7 +63,7 @@ describe('createDefaultConfig', () => {
     expect(config.collapseThreshold).toBe(0.6)
     expect(config.snipKeepRounds).toBe(15)
     expect(config.microcompactKeepRecentRounds).toBe(5)
-    expect(config.userJarvisDir).toBe(join(homedir(), '.jarvis'))
+    expect(config.userCyreneDir).toBe(join(homedir(), '.cyrene'))
     expect(config.dailyCompactThreshold).toBe(500)
     expect(config.dailyLoadLines).toBe(200)
     expect(config.dailySummaryMaxLength).toBe(400)
@@ -97,14 +97,24 @@ describe('createDefaultConfig', () => {
     }
   })
 
-  it('uses local model environment overrides when present', () => {
-    vi.stubEnv('JARVIS_BASE_URL', 'http://127.0.0.1:9999/v1')
-    vi.stubEnv('JARVIS_MODEL', 'custom-local-model')
+  it('uses Cyrene model environment overrides when present', () => {
+    vi.stubEnv('CYRENE_BASE_URL', 'http://127.0.0.1:9999/v1')
+    vi.stubEnv('CYRENE_MODEL', 'custom-cyrene-model')
 
     const config = createDefaultConfig('/tmp/project')
 
     expect(config.model.baseUrl).toBe('http://127.0.0.1:9999/v1')
-    expect(config.model.model).toBe('custom-local-model')
+    expect(config.model.model).toBe('custom-cyrene-model')
+  })
+
+  it('ignores deprecated Jarvis model environment variables', () => {
+    vi.stubEnv('JARVIS_BASE_URL', 'http://127.0.0.1:9999/v1')
+    vi.stubEnv('JARVIS_MODEL', 'old-jarvis-model')
+
+    const config = createDefaultConfig('/tmp/project')
+
+    expect(config.model.baseUrl).toBe('http://127.0.0.1:8080/v1')
+    expect(config.model.model).toBe('Qwen3.5-9B-MLX-4bit')
   })
 
   it('ignores deprecated CC_LOCAL model environment variables', () => {
