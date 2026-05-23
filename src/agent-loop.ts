@@ -174,7 +174,7 @@ export async function runAgentLoop(input: RunAgentLoopInput): Promise<RunAgentLo
           name,
           result.ok,
           Date.now() - toolStartedAt,
-          summarizeToolResult(name, result.content, result.ok)
+          summarizeToolResult(result.content, result.ok)
         )
       )
 
@@ -256,17 +256,7 @@ function notifyObserver(action: () => void): void {
   }
 }
 
-function summarizeToolResult(name: string, content: string, ok: boolean): string {
-  if (ok && name === 'generate_image') {
-    const relativePaths = [...content.matchAll(/^\s*relative path:\s*(.+)$/gm)]
-      .map((match) => match[1])
-      .filter((path): path is string => path !== undefined)
-    if (relativePaths.length > 0) {
-      const imageWord = relativePaths.length === 1 ? 'image' : 'images'
-      return truncateOneLine(`Generated ${imageWord}: ${relativePaths.join(', ')}`, 120)
-    }
-  }
-
+function summarizeToolResult(content: string, ok: boolean): string {
   return truncateOneLine(content, ok ? 60 : 80)
 }
 
