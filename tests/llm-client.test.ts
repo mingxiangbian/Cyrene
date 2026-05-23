@@ -2,6 +2,13 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import { callModel } from '../src/llm-client.js'
 import { createDefaultConfig } from '../src/config.js'
 
+function configuredConfig() {
+  const config = createDefaultConfig('/tmp/project')
+  config.model.baseUrl = 'http://127.0.0.1:8080/v1'
+  config.model.model = 'local-model'
+  return config
+}
+
 describe('callModel', () => {
   afterEach(() => {
     vi.unstubAllGlobals()
@@ -18,9 +25,7 @@ describe('callModel', () => {
       )
     )
     vi.stubGlobal('fetch', fetch)
-    const config = createDefaultConfig('/tmp/project')
-    config.model.baseUrl = 'http://127.0.0.1:8080/v1'
-    config.model.model = 'local-model'
+    const config = configuredConfig()
     config.model.temperature = 0.2
     const messages = [{ role: 'user' as const, content: 'Say hello' }]
     const tools = [
@@ -48,7 +53,6 @@ describe('callModel', () => {
         model: 'local-model',
         temperature: 0.2,
         max_tokens: 4096,
-        chat_template_kwargs: { enable_thinking: false },
         messages,
         tools,
         tool_choice: 'auto'
@@ -78,7 +82,7 @@ describe('callModel', () => {
     )
 
     const result = await callModel({
-      config: createDefaultConfig('/tmp/project'),
+      config: configuredConfig(),
       messages: [{ role: 'user', content: 'Use a tool' }],
       tools: []
     })
@@ -96,8 +100,7 @@ describe('callModel', () => {
       )
     )
     vi.stubGlobal('fetch', fetch)
-    const config = createDefaultConfig('/tmp/project')
-    config.model.model = 'local-model'
+    const config = configuredConfig()
     const messages = [{ role: 'user' as const, content: 'Say hello' }]
 
     await callModel({ config, messages, tools: [] })
@@ -112,7 +115,7 @@ describe('callModel', () => {
       'fetch',
       vi.fn().mockResolvedValue(new Response('model unavailable', { status: 503 }))
     )
-    const config = createDefaultConfig('/tmp/project')
+    const config = configuredConfig()
     config.llmRetryBaseDelayMs = 1
 
     await expect(
@@ -126,7 +129,7 @@ describe('callModel', () => {
 
   it('throws a helpful error when the endpoint cannot be reached', async () => {
     vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new TypeError('fetch failed')))
-    const config = createDefaultConfig('/tmp/project')
+    const config = configuredConfig()
     config.llmRetryBaseDelayMs = 1
 
     await expect(
@@ -150,9 +153,9 @@ describe('callModel', () => {
           }),
           { status: 200 }
         )
-      )
+    )
     vi.stubGlobal('fetch', fetch)
-    const config = createDefaultConfig('/tmp/project')
+    const config = configuredConfig()
     config.llmRetryBaseDelayMs = 1
 
     const result = await callModel({
@@ -168,7 +171,7 @@ describe('callModel', () => {
   it('does not retry non-retryable client errors', async () => {
     const fetch = vi.fn().mockResolvedValue(new Response('bad request', { status: 400 }))
     vi.stubGlobal('fetch', fetch)
-    const config = createDefaultConfig('/tmp/project')
+    const config = configuredConfig()
     config.llmRetryBaseDelayMs = 1
 
     await expect(
@@ -193,7 +196,7 @@ describe('callModel', () => {
       })
     )
 
-    const config = createDefaultConfig('/tmp/project')
+    const config = configuredConfig()
     config.llmRequestTimeoutMs = 50
     config.llmRetryMaxAttempts = 1
     const request = callModel({
@@ -205,5 +208,41 @@ describe('callModel', () => {
     await vi.advanceTimersByTimeAsync(50)
 
     await expect(request).rejects.toThrow('LLM request failed: aborted')
+  })
+
+  it('sends an Authorization header when an API key is configured', async () => {
+    const fetch = vi.fn().mockResolvedValue(
+      new Response(JSON.stringify({ choices: [{ message: { content: 'ok' } }] }), { status: 200 })
+    )
+    vi.stubGlobal('fetch', fetch)
+    const config = createDefaultConfig('/tmp/project')
+    config.model.baseUrl = 'https://api.example.com/v1'
+    config.model.model = 'strong-model'
+    config.model.apiKey = 'secret-key'
+
+    await callModel({
+      config,
+      messages: [{ role: 'user', content: 'Hello' }],
+      tools: []
+    })
+
+    expect(fetch).toHaveBeenCalledWith('https://api.example.com/v1/chat/completions', expect.objectContaining({
+      headers: {
+        'content-type': 'application/json',
+        authorization: 'Bearer secret-key'
+      }
+    }))
+  })
+
+  it('throws a clear error when model config is incomplete', async () => {
+    const config = createDefaultConfig('/tmp/project')
+
+    await expect(
+      callModel({
+        config,
+        messages: [{ role: 'user', content: 'Hello' }],
+        tools: []
+      })
+    ).rejects.toThrow('Model config is incomplete: set CYRENE_BASE_URL and CYRENE_MODEL.')
   })
 })

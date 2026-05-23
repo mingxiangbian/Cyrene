@@ -79,11 +79,12 @@ export async function callModel(input: CallModelInput): Promise<ModelResponse> {
 }
 
 async function requestCompletion(input: CallModelInput): Promise<Response> {
+  validateModelConfig(input.config)
+
   const body: {
     model: string
     temperature: number
     max_tokens: number
-    chat_template_kwargs: { enable_thinking: boolean }
     messages: ChatMessage[]
     tools?: unknown[]
     tool_choice?: 'auto'
@@ -91,7 +92,6 @@ async function requestCompletion(input: CallModelInput): Promise<Response> {
     model: input.config.model.model,
     temperature: input.config.model.temperature,
     max_tokens: 4096,
-    chat_template_kwargs: { enable_thinking: false },
     messages: input.messages
   }
 
@@ -100,12 +100,30 @@ async function requestCompletion(input: CallModelInput): Promise<Response> {
     body.tool_choice = 'auto'
   }
 
+  const headers: Record<string, string> = { 'content-type': 'application/json' }
+  if (input.config.model.apiKey?.trim()) {
+    headers.authorization = `Bearer ${input.config.model.apiKey}`
+  }
+
   return fetch(`${input.config.model.baseUrl}/chat/completions`, {
     method: 'POST',
-    headers: { 'content-type': 'application/json' },
+    headers,
     signal: AbortSignal.timeout(input.config.llmRequestTimeoutMs),
     body: JSON.stringify(body)
   })
+}
+
+function validateModelConfig(config: AppConfig): void {
+  const missing: string[] = []
+  if (config.model.baseUrl.trim() === '') {
+    missing.push('CYRENE_BASE_URL')
+  }
+  if (config.model.model.trim() === '') {
+    missing.push('CYRENE_MODEL')
+  }
+  if (missing.length > 0) {
+    throw new Error(`Model config is incomplete: set ${missing.join(' and ')}.`)
+  }
 }
 
 function isRetryableStatus(status: number): boolean {
