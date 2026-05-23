@@ -341,6 +341,37 @@ describe('runAgentLoop', () => {
     expect(memoryInputs).toEqual([{ runId: 'run-1', userPrompt: 'latest request', finalText: 'latest final answer' }])
   })
 
+  it('processes personal memory through the configured memory cwd', async () => {
+    const config = createDefaultConfig('/tmp/workspace')
+    config.memoryCwd = '/tmp/cyrene-root'
+    const memoryInputs: Array<{ cwd: string; runId: string; userPrompt: string; finalText: string }> = []
+
+    const result = await runAgentLoop({
+      config,
+      systemPrompt: 'system',
+      userPrompt: 'remember this',
+      tools: [],
+      runId: 'run-1',
+      personalMemory: {
+        processRunMemory: async (input): Promise<ProcessRunMemoryResult> => {
+          memoryInputs.push({
+            cwd: input.cwd,
+            runId: input.runId,
+            userPrompt: input.userPrompt,
+            finalText: input.finalText
+          })
+          return { extracted: 0, created: 0, promoted: 0, pending: 0, rejected: 0, archived: 0, updated: 0, errors: 0 }
+        }
+      },
+      callModel: async (): Promise<ModelResponse> => ({ content: 'stored', toolCalls: [] })
+    })
+
+    expect(result.finalText).toBe('stored')
+    expect(memoryInputs).toEqual([
+      { cwd: '/tmp/cyrene-root', runId: 'run-1', userPrompt: 'remember this', finalText: 'stored' }
+    ])
+  })
+
   it('processes session-style runs with the latest real user message after an empty-response retry', async () => {
     const config = createDefaultConfig('/tmp/project')
     const messages: ChatMessage[] = [

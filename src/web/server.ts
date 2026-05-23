@@ -32,6 +32,7 @@ import {
 
 export interface StartWebServerInput {
   cwd: string
+  memoryCwd?: string
   host: string
   port: number
   callModel?: (input: CallModelInput) => Promise<ModelResponse>
@@ -45,6 +46,7 @@ export interface WebServerHandle {
 interface RunRecord {
   id: string
   cwd: string
+  memoryCwd: string
   workspace: WorkspaceInfo
   sessionId: string
   userMessage: ChatMessage
@@ -58,6 +60,7 @@ interface RunRecord {
 
 interface WebServerContext {
   cwd: string
+  memoryCwd: string
   callModel?: (input: CallModelInput) => Promise<ModelResponse>
   runs: Map<string, RunRecord>
   activeRuns: Set<Promise<void>>
@@ -75,7 +78,8 @@ class RequestBodyTooLargeError extends Error {
 }
 
 export async function startWebServer(input: StartWebServerInput): Promise<WebServerHandle> {
-  const runtime = await buildAgentRuntime(input.cwd)
+  const memoryCwd = input.memoryCwd ?? input.cwd
+  const runtime = await buildAgentRuntime(input.cwd, new Date(), { memoryCwd })
   const runs = new Map<string, RunRecord>()
   const activeRuns = new Set<Promise<void>>()
 
@@ -84,6 +88,7 @@ export async function startWebServer(input: StartWebServerInput): Promise<WebSer
       activeRuns,
       callModel: input.callModel,
       cwd: input.cwd,
+      memoryCwd,
       runs,
       runtime
     }).catch((error: unknown) => {
@@ -258,6 +263,7 @@ async function createRun(
   }
 
   const runRuntime = await buildAgentRuntime(workspace.absolutePath, new Date(), {
+    memoryCwd: context.memoryCwd,
     thinkingMode: parsed.thinkingMode
   })
   const modelContext = contextInfoForRoute(runRuntime.config, 'chat')
@@ -307,6 +313,7 @@ async function createRun(
   const record: RunRecord = {
     id: randomUUID(),
     cwd: context.cwd,
+    memoryCwd: context.memoryCwd,
     workspace,
     sessionId: session.id,
     userMessage,
@@ -347,6 +354,7 @@ async function runWebAgent(
   try {
     const runtime = await buildAgentRuntime(record.workspace.absolutePath, new Date(), {
       thinkingMode: record.thinkingMode,
+      memoryCwd: record.memoryCwd,
       memoryQuery: record.userMessage.content,
       memoryTask: 'conversation'
     })

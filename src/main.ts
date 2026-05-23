@@ -39,6 +39,7 @@ async function main(): Promise<void> {
   program.parse()
 
   const options = program.opts<{ cwd: string; repl?: boolean; resume?: string; web?: boolean; host: string; port: string }>()
+  const launchCwd = process.cwd()
   if (program.args[0] === 'config') {
     if (program.args.length !== 2 || program.args[1] !== 'doctor') {
       console.error('Usage: cyrene config doctor')
@@ -57,7 +58,7 @@ async function main(): Promise<void> {
     return
   }
   if (program.args[0] === 'memory') {
-    await handleMemoryCommand(options.cwd, program.args.slice(1))
+    await handleMemoryCommand(launchCwd, program.args.slice(1))
     return
   }
 
@@ -86,12 +87,13 @@ async function main(): Promise<void> {
   }
 
   const { config, systemPrompt, tools } = await buildAgentRuntime(options.cwd, new Date(), {
+    memoryCwd: launchCwd,
     memoryQuery: prompt,
     memoryTask: prompt ? 'coding' : 'conversation'
   })
 
   if (options.web) {
-    const server = await startWebServer({ cwd: config.cwd, host: options.host, port })
+    const server = await startWebServer({ cwd: config.cwd, memoryCwd: config.memoryCwd, host: options.host, port })
     console.log(`cyrene web listening at ${server.url}`)
     await new Promise(() => {})
     return

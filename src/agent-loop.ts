@@ -230,7 +230,7 @@ async function processMemoryAfterFinal(
 
   try {
     await (input.personalMemory?.processRunMemory ?? processRunMemory)({
-      cwd: input.config.cwd,
+      cwd: input.config.memoryCwd,
       config: input.config,
       runId: input.runId,
       userPrompt,

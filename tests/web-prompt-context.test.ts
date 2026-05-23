@@ -106,6 +106,37 @@ describe('buildAgentRuntime', () => {
 
     expect(names).toEqual(['file_read', 'file_write', 'file_edit', 'grep', 'glob', 'ask_user'])
   })
+
+  it('retrieves memory from the shared root while keeping workspace cwd for tools', async () => {
+    const home = await mkdtemp(join(tmpdir(), 'cyrene-web-home-'))
+    tempHomes.push(home)
+    process.env.HOME = home
+
+    const root = join(home, 'cyrene-root')
+    const workspace = join(root, 'workspace')
+    await mkdir(join(workspace, '.cyrene', 'memory'), { recursive: true })
+    await writeActiveMemories(root, [
+      createMemory({
+        id: 'root-memory',
+        content: 'Root memory is shared by Web and CLI.',
+        normalizedKey: 'root-shared-memory'
+      })
+    ])
+    await writeActiveMemories(workspace, [
+      createMemory({
+        id: 'workspace-memory',
+        content: 'Workspace-local memory should not be injected.',
+        normalizedKey: 'workspace-local-memory'
+      })
+    ])
+
+    const overrides = { memoryCwd: root, memoryQuery: 'shared root memory' }
+    const runtime = await buildAgentRuntime(workspace, new Date('2026-05-20T16:30:00.000Z'), overrides)
+
+    expect(runtime.config.cwd).toBe(resolve(workspace))
+    expect(runtime.systemPrompt).toContain('Root memory is shared by Web and CLI.')
+    expect(runtime.systemPrompt).not.toContain('Workspace-local memory should not be injected.')
+  })
 })
 
 function createMemory(overrides: Partial<CyreneMemory> = {}): CyreneMemory {

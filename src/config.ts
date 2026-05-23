@@ -23,6 +23,7 @@ export interface FeatureFlags {
 
 export interface AppConfig {
   cwd: string
+  memoryCwd: string
   model: ModelConfig
   features: FeatureFlags
   maxToolCallsPerTurn: number
@@ -144,6 +145,7 @@ export function createDefaultConfig(cwd: string): AppConfig {
 
   return {
     cwd,
+    memoryCwd: cwd,
     model: {
       baseUrl,
       model,

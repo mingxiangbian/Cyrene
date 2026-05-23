@@ -23,6 +23,7 @@ export interface AgentRuntime {
 
 export interface AgentRuntimeOverrides {
   thinkingMode?: ThinkingMode
+  memoryCwd?: string
   memoryQuery?: string
   memoryTask?: 'coding' | 'planning' | 'conversation' | 'memory' | 'debugging'
 }
@@ -42,7 +43,7 @@ export async function buildAgentRuntime(
   const rules = await loadRuleStack(config.cwd, config.userCyreneDir)
   const projectInstructions = await loadInstructionsIfExists(config.cwd)
   const memories = await retrieveMemories({
-    cwd: config.cwd,
+    cwd: config.memoryCwd,
     userCyreneDir: config.userCyreneDir,
     query: overrides.memoryQuery ?? '',
     task: overrides.memoryTask ?? 'memory',
@@ -70,12 +71,17 @@ export async function buildAgentRuntime(
 }
 
 function applyRuntimeOverrides(config: AppConfig, overrides: AgentRuntimeOverrides): AppConfig {
+  const memoryCwd = overrides.memoryCwd === undefined ? config.memoryCwd : resolve(overrides.memoryCwd)
   if (overrides.thinkingMode === undefined) {
-    return config
+    if (memoryCwd === config.memoryCwd) {
+      return config
+    }
+    return { ...config, memoryCwd }
   }
 
   return {
     ...config,
+    memoryCwd,
     model: {
       ...config.model,
       thinkingMode: overrides.thinkingMode

@@ -75,11 +75,12 @@ describe('personal memory migration and snapshots', () => {
   it('prints typed memory from the CLI', async () => {
     const cwd = await createTempDir()
     await writeActiveMemories(cwd, [createActiveMemory({ id: 'mem-cli', content: 'CLI can list typed memory.' })])
+    const repo = process.cwd()
 
     const result = await execFileAsync(
       process.execPath,
-      ['node_modules/tsx/dist/cli.mjs', 'src/main.ts', '--cwd', cwd, 'memory', 'list'],
-      { env: cliEnv() }
+      [join(repo, 'node_modules/tsx/dist/cli.mjs'), join(repo, 'src/main.ts'), '--cwd', cwd, 'memory', 'list'],
+      { cwd, env: cliEnv() }
     )
 
     expect(result.stderr).toBe('')

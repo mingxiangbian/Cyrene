@@ -177,10 +177,11 @@ describe('main CLI', () => {
     )
 
     try {
+      const repo = process.cwd()
       const result = await execFileAsync(
         process.execPath,
-        ['node_modules/tsx/dist/cli.mjs', 'src/main.ts', '--cwd', root, 'memory', 'events', '--limit', '1'],
-        { env: cliEnv() }
+        [join(repo, 'node_modules/tsx/dist/cli.mjs'), join(repo, 'src/main.ts'), '--cwd', root, 'memory', 'events', '--limit', '1'],
+        { cwd: root, env: cliEnv() }
       )
 
       expect(result.stderr).toBe('')
@@ -192,6 +193,52 @@ describe('main CLI', () => {
           reason: 'second event'
         }
       ])
+    } finally {
+      await rm(root, { recursive: true, force: true })
+    }
+  })
+
+  it('uses the launch root for memory subcommands even when --cwd points at a workspace', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'cyrene-main-memory-root-'))
+    const workspace = join(root, 'workspace')
+    await mkdir(join(root, '.cyrene', 'memory'), { recursive: true })
+    await mkdir(join(workspace, '.cyrene', 'memory'), { recursive: true })
+    await writeFile(
+      join(root, '.cyrene', 'memory', 'index.jsonl'),
+      activeMemoryLine({
+        id: 'root-memory',
+        content: 'Root memory should be shared by CLI and Web.',
+        normalizedKey: 'root-shared-memory'
+      })
+    )
+    await writeFile(
+      join(workspace, '.cyrene', 'memory', 'index.jsonl'),
+      activeMemoryLine({
+        id: 'workspace-memory',
+        content: 'Workspace memory should not be used.',
+        normalizedKey: 'workspace-memory'
+      })
+    )
+
+    try {
+      const repo = process.cwd()
+      const result = await execFileAsync(
+        process.execPath,
+        [
+          join(repo, 'node_modules/tsx/dist/cli.mjs'),
+          join(repo, 'src/main.ts'),
+          '--cwd',
+          workspace,
+          'memory',
+          'list'
+        ],
+        { cwd: root, env: cliEnv() }
+      )
+
+      expect(result.stderr).toBe('')
+      expect(result.stdout).toContain('root-memory')
+      expect(result.stdout).toContain('Root memory should be shared by CLI and Web.')
+      expect(result.stdout).not.toContain('workspace-memory')
     } finally {
       await rm(root, { recursive: true, force: true })
     }
@@ -290,10 +337,12 @@ describe('main CLI', () => {
     }
 
     try {
+      const repo = process.cwd()
       const result = await execFileAsync(
         process.execPath,
-        ['node_modules/tsx/dist/cli.mjs', 'src/main.ts', '--cwd', root, 'hello'],
+        [join(repo, 'node_modules/tsx/dist/cli.mjs'), join(repo, 'src/main.ts'), '--cwd', root, 'hello'],
         {
+          cwd: root,
           env: cliEnv({
             HOME: home,
             CYRENE_BASE_URL: `http://127.0.0.1:${address.port}/v1`,
