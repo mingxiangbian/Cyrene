@@ -1,6 +1,8 @@
 #!/usr/bin/env -S npx tsx
 import { Command } from 'commander'
 import { runAgentLoop } from './agent-loop.js'
+import { createDefaultConfig } from './config.js'
+import { formatConfigDoctor } from './config-doctor.js'
 import { compactDailyIfNeeded } from './daily-compaction.js'
 import { runRepl } from './repl.js'
 import { createTerminalObserver } from './ui-observer.js'
@@ -24,6 +26,16 @@ async function main(): Promise<void> {
   program.parse()
 
   const options = program.opts<{ cwd: string; repl?: boolean; resume?: string; web?: boolean; host: string; port: string }>()
+  if (program.args[0] === 'config') {
+    if (program.args.length !== 2 || program.args[1] !== 'doctor') {
+      console.error('Usage: cyrene config doctor')
+      process.exit(1)
+    }
+    const config = createDefaultConfig(options.cwd)
+    console.log(formatConfigDoctor(config))
+    return
+  }
+
   const prompt = program.args.join(' ').trim()
   if (options.web && prompt) {
     console.error('--web cannot be combined with a prompt.')

@@ -77,6 +77,46 @@ describe('main CLI', () => {
     }
   })
 
+  it('prints config doctor output', async () => {
+    const result = await execFileAsync(
+      process.execPath,
+      ['node_modules/tsx/dist/cli.mjs', 'src/main.ts', '--cwd', process.cwd(), 'config', 'doctor'],
+      {
+        env: cliEnv({
+          CYRENE_BASE_URL: 'https://api.example.com/v1',
+          CYRENE_MODEL: 'strong-model',
+          CYRENE_API_KEY: 'secret-key',
+          CYRENE_ENABLE_BASH: '0'
+        })
+      }
+    )
+
+    expect(result.stderr).toBe('')
+    expect(result.stdout).toContain('Model:')
+    expect(result.stdout).toContain('baseUrl: https://api.example.com/v1')
+    expect(result.stdout).toContain('model: strong-model')
+    expect(result.stdout).toContain('apiKey: configured')
+    expect(result.stdout).toContain('enabled: file_read, file_write, file_edit, grep, glob, ask_user, web_search')
+    expect(result.stdout).toContain('disabled: bash, mcp')
+    expect(result.stdout).toContain('T2I: removed from runtime')
+  })
+
+  it('warns when remote HTTPS model config has no API key', async () => {
+    const result = await execFileAsync(
+      process.execPath,
+      ['node_modules/tsx/dist/cli.mjs', 'src/main.ts', '--cwd', process.cwd(), 'config', 'doctor'],
+      {
+        env: cliEnv({
+          CYRENE_BASE_URL: 'https://api.example.com/v1',
+          CYRENE_MODEL: 'strong-model',
+          CYRENE_API_KEY: ''
+        })
+      }
+    )
+
+    expect(result.stdout).toContain('warning: CYRENE_API_KEY is not set for remote HTTPS endpoint')
+  })
+
   it('starts the Web server and prints the local URL', async () => {
     const child = spawn(process.execPath, ['node_modules/tsx/dist/cli.mjs', 'src/main.ts', '--web', '--port', '0'], {
       env: cliEnv(),
@@ -174,7 +214,8 @@ describe('main CLI', () => {
         {
           env: cliEnv({
             HOME: home,
-            CYRENE_BASE_URL: `http://127.0.0.1:${address.port}/v1`
+            CYRENE_BASE_URL: `http://127.0.0.1:${address.port}/v1`,
+            CYRENE_MODEL: 'test-model'
           })
         }
       )
@@ -224,7 +265,8 @@ describe('main CLI', () => {
         ['node_modules/tsx/dist/cli.mjs', 'src/main.ts', 'hello'],
         {
           env: cliEnv({
-            CYRENE_BASE_URL: 'http://127.0.0.1:1/v1'
+            CYRENE_BASE_URL: 'http://127.0.0.1:1/v1',
+            CYRENE_MODEL: 'test-model'
           })
         }
       )
@@ -291,7 +333,8 @@ describe('main CLI', () => {
         ['node_modules/tsx/dist/cli.mjs', 'src/main.ts', '--cwd', process.cwd(), 'find package'],
         {
           env: cliEnv({
-            CYRENE_BASE_URL: `http://127.0.0.1:${address.port}/v1`
+            CYRENE_BASE_URL: `http://127.0.0.1:${address.port}/v1`,
+            CYRENE_MODEL: 'test-model'
           })
         }
       )
@@ -368,7 +411,8 @@ describe('main CLI', () => {
         {
           env: cliEnv({
             FORCE_COLOR: '1',
-            CYRENE_BASE_URL: `http://127.0.0.1:${address.port}/v1`
+            CYRENE_BASE_URL: `http://127.0.0.1:${address.port}/v1`,
+            CYRENE_MODEL: 'test-model'
           })
         }
       )
@@ -453,7 +497,8 @@ describe('main CLI', () => {
         {
           env: cliEnv({
             HOME: home,
-            CYRENE_BASE_URL: `http://127.0.0.1:${address.port}/v1`
+            CYRENE_BASE_URL: `http://127.0.0.1:${address.port}/v1`,
+            CYRENE_MODEL: 'test-model'
           })
         }
       )
