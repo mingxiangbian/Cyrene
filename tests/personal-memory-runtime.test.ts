@@ -119,6 +119,24 @@ describe('personal memory runtime pipeline', () => {
     await expect(readActiveMemories(cwd)).resolves.toHaveLength(1)
   })
 
+  it('processes fenced JSON extraction responses into active memory', async () => {
+    const cwd = await createTempDir()
+    const config = createMemoryConfig(cwd, true)
+    const callModel = createCandidateModel({ fenced: true })
+
+    const result = await processRunMemory({
+      cwd,
+      config,
+      runId: 'run-1',
+      userPrompt: 'remember this project fact',
+      finalText: 'Cyrene uses Personal Memory Core.',
+      callModel
+    })
+
+    expect(result).toMatchObject({ extracted: 1, created: 1, pending: 0, rejected: 0, errors: 0 })
+    await expect(readActiveMemories(cwd)).resolves.toHaveLength(1)
+  })
+
   it('keeps extraction failure best-effort', async () => {
     const cwd = await createTempDir()
     const config = createMemoryConfig(cwd, true)
@@ -176,30 +194,32 @@ function createMemoryConfig(cwd: string, enabled: boolean): AppConfig {
   }
 }
 
-function createCandidateModel(): (input: CallModelInput) => Promise<ModelResponse> {
+function createCandidateModel(options: { fenced?: boolean } = {}): (input: CallModelInput) => Promise<ModelResponse> {
+  const payload = JSON.stringify({
+    candidates: [
+      {
+        domain: 'project',
+        type: 'project_fact',
+        strength: 'hard',
+        scope: 'project',
+        content: 'Cyrene uses Personal Memory Core.',
+        normalizedKey: 'cyrene-personal-memory-core',
+        source: 'assistant_observed',
+        scores: {
+          evidenceStrength: 0.9,
+          stability: 0.85,
+          usefulness: 0.8,
+          safety: 0.95,
+          sensitivity: 0.1
+        },
+        evidence: [{ summary: 'The run completed Phase 3 memory work.' }],
+        tags: ['memory']
+      }
+    ]
+  })
+
   return vi.fn(async (_input: CallModelInput): Promise<ModelResponse> => ({
-    content: JSON.stringify({
-      candidates: [
-        {
-          domain: 'project',
-          type: 'project_fact',
-          strength: 'hard',
-          scope: 'project',
-          content: 'Cyrene uses Personal Memory Core.',
-          normalizedKey: 'cyrene-personal-memory-core',
-          source: 'assistant_observed',
-          scores: {
-            evidenceStrength: 0.9,
-            stability: 0.85,
-            usefulness: 0.8,
-            safety: 0.95,
-            sensitivity: 0.1
-          },
-          evidence: [{ summary: 'The run completed Phase 3 memory work.' }],
-          tags: ['memory']
-        }
-      ]
-    }),
+    content: options.fenced ? `\`\`\`json\n${payload}\n\`\`\`` : payload,
     toolCalls: []
   }))
 }

@@ -103,11 +103,20 @@ export async function extractMemoryCandidates(input: ExtractMemoryCandidatesInpu
 }
 
 export function parseMemoryCandidates(content: string, runId: string): PendingMemory[] {
-  const parsed = JSON.parse(content.trim()) as unknown
+  const parsed = JSON.parse(extractJsonObject(content)) as unknown
   const rawCandidates = isRecord(parsed) && Array.isArray(parsed.candidates) ? parsed.candidates : []
   const now = new Date().toISOString()
 
   return rawCandidates.map((raw, index) => parseCandidate(raw, runId, index, now))
+}
+
+function extractJsonObject(content: string): string {
+  const trimmed = content.trim()
+  const fenced = /^```(?:json)?\s*([\s\S]*?)\s*```$/.exec(trimmed)
+  if (fenced !== null) {
+    return fenced[1].trim()
+  }
+  return trimmed
 }
 
 function parseCandidate(raw: unknown, runId: string, index: number, now: string): PendingMemory {
