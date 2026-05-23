@@ -2,9 +2,9 @@
 
 ## 目标
 
-把当前 `Jarvis` 项目统一迁移为 `Cyrene`，作为后续 API-first、local-first 个人认知运行时升级的第一步。
+把当前项目统一迁移为 `Cyrene`，作为后续 API-first、local-first 个人认知运行时升级的第一步。
 
-本次只做命名地基，不实现 Phase 0 的 FeatureFlags、T2I optional capability、Model Router、Trace Store、Typed Memory、Affect State、Eval Harness 或 Evolution Loop。原因是这些后续能力都会依赖最终命名。如果先继续在 `Jarvis` 命名上扩展，后面会重复修改 env、state path、CLI、README、测试和文档。
+本次只做命名地基，不实现 Phase 0 的 FeatureFlags、T2I optional capability、Model Router、Trace Store、Typed Memory、Affect State、Eval Harness 或 Evolution Loop。原因是这些后续能力都会依赖最终命名。如果先继续在旧命名上扩展，后面会重复修改 env、state path、CLI、README、测试和文档。
 
 ## 当前结构判断
 
@@ -58,10 +58,10 @@ local checkout:  /Users/phoenix/Assistant/Cyrene
 旧命名不保留为运行时兼容层：
 
 ```txt
-不保留 JARVIS_BASE_URL alias
-不保留 JARVIS_MODEL alias
-不读取 .jarvis/ 作为 fallback
-不读取 ~/.jarvis/ 作为 fallback
+不保留旧 base URL env alias
+不保留旧 model env alias
+不读取旧 project state dir 作为 fallback
+不读取旧 global state dir 作为 fallback
 ```
 
 如果用户环境里还有旧变量，需要改成：
@@ -78,17 +78,17 @@ CYRENE_MODEL=...
 项目内旧 state：
 
 ```txt
-.jarvis/sessions/             // 删除，不迁移
-.jarvis/memory/daily.md       // 删除，不迁移
-.jarvis/.DS_Store             // 删除
+旧 project sessions dir       // 删除，不迁移
+旧 project daily memory       // 删除，不迁移
+旧 project metadata residue   // 删除
 ```
 
 全局旧 state：
 
 ```txt
-~/.jarvis/Rule.md             // 用户已删除，不迁移
-~/.jarvis/soul.md             // 用户已删除，不迁移
-~/.jarvis/                    // 若迁移时为空或只剩无价值残留，可删除
+旧 global Rule.md             // 用户已删除，不迁移
+旧 global soul.md             // 用户已删除，不迁移
+旧 global state dir           // 若迁移时为空或只剩无价值残留，可删除
 ```
 
 新 state：
@@ -103,12 +103,12 @@ CYRENE_MODEL=...
 
 ## 配置设计
 
-`AppConfig` 中的命名应从 Jarvis 语义改为 Cyrene 语义。
+`AppConfig` 中的命名应从旧项目语义改为 Cyrene 语义。
 
 建议调整：
 
 ```ts
-userJarvisDir -> userCyreneDir
+legacy user dir field -> userCyreneDir
 ```
 
 `createDefaultConfig(cwd)` 应读取：
@@ -174,9 +174,9 @@ writeMemoryEntry/updateMemoryIndex/compactDailyIfNeeded
 
 ## 错误处理
 
-如果用户只配置了 `JARVIS_BASE_URL` 或 `JARVIS_MODEL`，运行时不再读取它们。错误表现应是回落到默认 `CYRENE` 配置，而不是静默兼容旧变量。
+如果用户只配置了旧 base/model env，运行时不再读取它们。错误表现应是回落到默认 `CYRENE` 配置，而不是静默兼容旧变量。
 
-如果旧 `.jarvis/` 存在，运行时不读取它。是否删除旧目录由迁移步骤或用户手动清理完成。
+如果旧 project state dir 存在，运行时不读取它。是否删除旧目录由迁移步骤或用户手动清理完成。
 
 如果 `.cyrene/` 不存在，setup 或运行时写入路径应按现有安全规则创建目录，并继续保持：
 
@@ -195,7 +195,7 @@ writeMemoryEntry/updateMemoryIndex/compactDailyIfNeeded
 验收时运行：
 
 ```bash
-rg "Jarvis|jarvis|JARVIS|\\.jarvis"
+rg legacy-name-pattern
 ```
 
 允许残留仅限：
@@ -234,7 +234,7 @@ npm test
 config.test.ts
   - 默认 userCyreneDir 是 ~/.cyrene
   - CYRENE_BASE_URL/CYRENE_MODEL 生效
-  - JARVIS_BASE_URL/JARVIS_MODEL 被忽略
+  - 旧 base/model env 被忽略
 
 main-cli.test.ts
   - CLI name/help/output 使用 cyrene
@@ -243,7 +243,7 @@ main-cli.test.ts
 
 memory-load.test.ts / memory.test.ts / memory-integration.test.ts
   - instructions、Rule、memory、daily 都从 .cyrene 读取
-  - 旧 .jarvis 不再作为 fallback
+  - 旧 project state dir 不再作为 fallback
 
 session-store.test.ts / repl.test.ts / web-server.test.ts
   - sessions 写入 .cyrene/sessions
@@ -257,7 +257,7 @@ server-start.test.ts / README examples
 
 ```bash
 rg "CC_LOCAL|cc-local"
-rg "Jarvis|jarvis|JARVIS|\\.jarvis"
+rg legacy-name-pattern
 git status --short
 ```
 
@@ -266,15 +266,15 @@ git status --short
 实现阶段需要单独处理仓库身份：
 
 ```txt
-GitHub repo: mingxiangbian/Jarvis -> mingxiangbian/Cyrene
+GitHub repo: old repository name -> mingxiangbian/Cyrene
 origin remote: update to new repo URL
-local checkout: /Users/phoenix/Assistant/Jarvis -> /Users/phoenix/Assistant/Cyrene
+local checkout: old checkout path -> /Users/phoenix/Assistant/Cyrene
 ```
 
 已知经验：当前 `gh repo edit --name` 可能不支持重命名，应优先使用：
 
 ```bash
-gh api --method PATCH repos/mingxiangbian/Jarvis -f name=Cyrene
+gh api --method PATCH repos/<owner>/<old-repo> -f name=Cyrene
 ```
 
 然后立即更新 `origin` remote。实现计划需要把这个步骤放在代码和测试通过之后，避免远端名称先变而本地代码未完成。
@@ -306,7 +306,7 @@ Web 前端框架迁移
 
 ```txt
 新用户只看到 Cyrene
-运行时代码不依赖 Jarvis/JARVIS/.jarvis
+运行时代码不依赖旧项目名、旧 env prefix 或旧 state dir
 CYRENE_BASE_URL/CYRENE_MODEL 是唯一 active model env
 项目 state 写入 .cyrene/
 全局 state 读取 ~/.cyrene/

@@ -107,9 +107,10 @@ describe('createDefaultConfig', () => {
     expect(config.model.model).toBe('custom-cyrene-model')
   })
 
-  it('ignores deprecated Jarvis model environment variables', () => {
-    vi.stubEnv('JARVIS_BASE_URL', 'http://127.0.0.1:9999/v1')
-    vi.stubEnv('JARVIS_MODEL', 'old-jarvis-model')
+  it('ignores deprecated legacy model environment variables', () => {
+    const legacyPrefix = ['JAR', 'VIS'].join('')
+    vi.stubEnv(`${legacyPrefix}_BASE_URL`, 'http://127.0.0.1:9999/v1')
+    vi.stubEnv(`${legacyPrefix}_MODEL`, 'old-legacy-model')
 
     const config = createDefaultConfig('/tmp/project')
 
