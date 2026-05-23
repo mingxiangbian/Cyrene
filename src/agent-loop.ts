@@ -157,7 +157,7 @@ export async function runAgentLoop(input: RunAgentLoopInput): Promise<RunAgentLo
       const tool = input.tools.find((candidate) => candidate.name === name)
       const summary = toolCallSummary(name, toolCall.function.arguments)
       const toolStartedAt = Date.now()
-      notifyObserver(() => observer?.onToolCallStart(name, summary))
+      notifyObserver(() => observer?.onToolCallStart(name, summary, toolCall.id))
       const result = context.unavailableTools.has(name)
         ? {
             ok: false,
@@ -179,7 +179,8 @@ export async function runAgentLoop(input: RunAgentLoopInput): Promise<RunAgentLo
           name,
           result.ok,
           Date.now() - toolStartedAt,
-          summarizeToolResult(result.content, result.ok)
+          summarizeToolResult(result.content, result.ok),
+          toolCall.id
         )
       )
 

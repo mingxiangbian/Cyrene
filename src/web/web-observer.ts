@@ -22,10 +22,10 @@ export function createWebObserver(emit: WebEventSink): AgentObserver {
     onThinkingStop(durationMs: number): void {
       emit({ type: 'thinking_stop', durationMs })
     },
-    onToolCallStart(name: string, summary: string): void {
+    onToolCallStart(name: string, summary: string, _toolCallId?: string): void {
       emit({ type: 'tool_start', name, summary })
     },
-    onToolCallResult(name: string, ok: boolean, durationMs: number, summary: string): void {
+    onToolCallResult(name: string, ok: boolean, durationMs: number, summary: string, _toolCallId?: string): void {
       emit({ type: 'tool_result', name, ok, durationMs, summary })
     },
     onResponse(text: string): void {

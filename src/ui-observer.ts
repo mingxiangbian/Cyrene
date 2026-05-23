@@ -6,8 +6,8 @@ import type { ModelContextInfo } from './models/types.js'
 export interface AgentObserver {
   onThinkingStart(modelContext?: ModelContextInfo): void
   onThinkingStop(durationMs: number): void
-  onToolCallStart(name: string, summary: string): void
-  onToolCallResult(name: string, ok: boolean, durationMs: number, summary: string): void
+  onToolCallStart(name: string, summary: string, toolCallId?: string): void
+  onToolCallResult(name: string, ok: boolean, durationMs: number, summary: string, toolCallId?: string): void
   onResponse(text: string): void
 }
 

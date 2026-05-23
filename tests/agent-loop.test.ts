@@ -1071,6 +1071,45 @@ describe('runAgentLoop', () => {
     expect(result.finalText).toBe('done without web')
     expect(toolExecutions).toBe(2)
   })
+
+  it('passes tool call ids to observer tool events', async () => {
+    const config = createDefaultConfig(process.cwd())
+    const events: string[] = []
+    const callModel = vi.fn(async ({ messages }: { messages: ChatMessage[] }): Promise<ModelResponse> => {
+      const hasToolResult = messages.some((message) => message.role === 'tool')
+      if (!hasToolResult) {
+        return {
+          content: '',
+          toolCalls: [
+            {
+              id: 'call-echo',
+              type: 'function',
+              function: { name: 'echo', arguments: JSON.stringify({ text: 'done' }) }
+            }
+          ]
+        }
+      }
+      return { content: 'done', toolCalls: [] }
+    })
+
+    await runAgentLoop({
+      config,
+      systemPrompt: 'system',
+      userPrompt: 'echo',
+      tools: [echoTool],
+      callModel,
+      observer: {
+        onThinkingStart: () => {},
+        onThinkingStop: () => {},
+        onToolCallStart: (_name, _summary, toolCallId) => events.push(`start:${toolCallId}`),
+        onToolCallResult: (_name, _ok, _durationMs, _summary, toolCallId) => events.push(`result:${toolCallId}`),
+        onResponse: () => {}
+      }
+    })
+
+    expect(events).toContain('start:call-echo')
+    expect(events).toContain('result:call-echo')
+  })
 })
 
 function toolDefinitionsShape(names: string[]): unknown[] {
