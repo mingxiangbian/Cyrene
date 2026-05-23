@@ -38,6 +38,7 @@ export interface AppConfig {
   dailyLoadLines: number
   dailySummaryMaxLength: number
   sessionResumeRecentMessages: number
+  memoryAutoExtractEnabled: boolean
   memoryMaxLines: number
   memoryMaxLineLength: number
   readMaxInlineLines: number
@@ -174,6 +175,7 @@ export function createDefaultConfig(cwd: string): AppConfig {
     dailyLoadLines: 200,
     dailySummaryMaxLength: 400,
     sessionResumeRecentMessages: 40,
+    memoryAutoExtractEnabled: parseBooleanEnv(envValue(dotEnv, 'CYRENE_MEMORY_AUTO_EXTRACT'), true),
     memoryMaxLines: 200,
     memoryMaxLineLength: 150,
     readMaxInlineLines: 500,
