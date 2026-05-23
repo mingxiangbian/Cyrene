@@ -68,7 +68,7 @@ export async function runReplTurn(input: RunReplTurnInput): Promise<RunReplTurnR
     }
   }
 
-  const userMessage: ChatMessage = { role: 'user', content: text }
+  const userMessage: { role: 'user'; content: string } = { role: 'user', content: text }
   input.messages.push(userMessage)
   const turnStartIndex = input.messages.length - 1
 

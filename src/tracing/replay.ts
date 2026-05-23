@@ -51,7 +51,7 @@ function parseTraceMessageLine(line: string, runId: string): ChatMessage {
     ...(typeof message.tool_call_id === 'string' ? { tool_call_id: message.tool_call_id } : {}),
     ...(Array.isArray(message.tool_calls) ? { tool_calls: message.tool_calls as ChatMessage['tool_calls'] } : {}),
     ...(isObject(message.providerMetadata)
-      ? { providerMetadata: message.providerMetadata as ChatMessage['providerMetadata'] }
+      ? { providerMetadata: message.providerMetadata as unknown as ChatMessage['providerMetadata'] }
       : {})
   }
 }

@@ -347,7 +347,7 @@ async function runWebAgent(
     workspaceId: record.workspace.id,
     workspacePath: record.workspace.absolutePath,
     sessionId: record.sessionId,
-    userMessage: record.userMessage,
+    userMessage: { role: 'user', content: record.userMessage.content },
     modelContext: record.modelContext
   })
   let modelMessages: ChatMessage[] | undefined
