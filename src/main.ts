@@ -32,6 +32,10 @@ async function main(): Promise<void> {
     .option('--host <host>', 'host for the Web console', '127.0.0.1')
     .option('--port <port>', 'port for the Web console', '4317')
 
+  if (isMemoryCommandArgv(process.argv.slice(2))) {
+    program.allowUnknownOption()
+  }
+
   program.parse()
 
   const options = program.opts<{ cwd: string; repl?: boolean; resume?: string; web?: boolean; host: string; port: string }>()
@@ -235,6 +239,34 @@ function parseLimit(args: string[]): number | undefined {
   if (index < 0) return undefined
   const parsed = Number(args[index + 1])
   return Number.isInteger(parsed) && parsed > 0 ? parsed : undefined
+}
+
+function isMemoryCommandArgv(args: string[]): boolean {
+  const optionsWithValues = new Set(['--cwd', '--resume', '--host', '--port'])
+  const booleanOptions = new Set(['--repl', '--web'])
+
+  for (let index = 0; index < args.length; index += 1) {
+    const arg = args[index]
+    if (arg === '--') {
+      return args[index + 1] === 'memory'
+    }
+    if (optionsWithValues.has(arg)) {
+      index += 1
+      continue
+    }
+    if ([...optionsWithValues].some((option) => arg.startsWith(`${option}=`))) {
+      continue
+    }
+    if (booleanOptions.has(arg)) {
+      continue
+    }
+    if (arg.startsWith('-')) {
+      return false
+    }
+    return arg === 'memory'
+  }
+
+  return false
 }
 
 main().catch((error: unknown) => {

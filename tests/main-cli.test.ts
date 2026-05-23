@@ -154,6 +154,49 @@ describe('main CLI', () => {
     expect(result.stdout).toContain('warning: CYRENE_API_KEY is not set for remote HTTPS endpoint')
   })
 
+  it('prints limited memory events from the memory subcommand', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'cyrene-main-memory-events-'))
+    const memoryDir = join(root, '.cyrene', 'memory')
+    await mkdir(memoryDir, { recursive: true })
+    await writeFile(
+      join(memoryDir, 'events.jsonl'),
+      [
+        JSON.stringify({
+          id: 'event-1',
+          action: 'create',
+          at: '2026-05-23T00:00:00.000Z',
+          reason: 'first event'
+        }),
+        JSON.stringify({
+          id: 'event-2',
+          action: 'pending',
+          at: '2026-05-23T00:01:00.000Z',
+          reason: 'second event'
+        })
+      ].join('\n') + '\n'
+    )
+
+    try {
+      const result = await execFileAsync(
+        process.execPath,
+        ['node_modules/tsx/dist/cli.mjs', 'src/main.ts', '--cwd', root, 'memory', 'events', '--limit', '1'],
+        { env: cliEnv() }
+      )
+
+      expect(result.stderr).toBe('')
+      expect(JSON.parse(result.stdout)).toEqual([
+        {
+          id: 'event-2',
+          action: 'pending',
+          at: '2026-05-23T00:01:00.000Z',
+          reason: 'second event'
+        }
+      ])
+    } finally {
+      await rm(root, { recursive: true, force: true })
+    }
+  })
+
   it('starts the Web server and prints the local URL', async () => {
     const child = spawn(process.execPath, ['node_modules/tsx/dist/cli.mjs', 'src/main.ts', '--web', '--port', '0'], {
       env: cliEnv(),
