@@ -1,4 +1,4 @@
-import { mkdtemp, readFile, rm } from 'node:fs/promises'
+import { mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { z } from 'zod'
@@ -6,6 +6,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import { runAgentLoop } from '../src/agent-loop.js'
 import { createDefaultConfig } from '../src/config.js'
 import type { ChatMessage, ModelResponse } from '../src/llm-client.js'
+import type { ProcessRunMemoryInput, ProcessRunMemoryResult } from '../src/memory/memory-runtime.js'
 import type { Tool, ToolContext } from '../src/tools/types.js'
 import type { AgentObserver } from '../src/ui-observer.js'
 
@@ -15,6 +16,13 @@ async function createTempDir(): Promise<string> {
   const dir = await mkdtemp(join(tmpdir(), 'cyrene-agent-loop-'))
   tempDirs.push(dir)
   return dir
+}
+
+function memoryProcessor(inputs: Array<{ runId: string; userPrompt: string; finalText: string }>) {
+  return async (input: ProcessRunMemoryInput): Promise<ProcessRunMemoryResult> => {
+    inputs.push({ runId: input.runId, userPrompt: input.userPrompt, finalText: input.finalText })
+    return { extracted: 0, created: 0, promoted: 0, pending: 0, rejected: 0, archived: 0, updated: 0, errors: 0 }
+  }
 }
 
 const echoTool: Tool<{ text: string }> = {
@@ -96,7 +104,7 @@ describe('runAgentLoop', () => {
   })
 
   it('stops after a successful user-interaction tool call', async () => {
-    const maybeAppendDailySummary = vi.fn(async () => true)
+    const processRunMemory = vi.fn(memoryProcessor([]))
     let modelCalls = 0
 
     const result = await runAgentLoop({
@@ -104,7 +112,8 @@ describe('runAgentLoop', () => {
       systemPrompt: 'system',
       userPrompt: 'edit something',
       tools: [askTool],
-      dailySummary: { maybeAppendDailySummary },
+      runId: 'run-1',
+      personalMemory: { processRunMemory },
       callModel: async (): Promise<ModelResponse> => {
         modelCalls += 1
         return {
@@ -126,7 +135,7 @@ describe('runAgentLoop', () => {
     expect(result.finalText).toBe('Question for user: Which file should I edit?')
     expect(result.toolCallCount).toBe(1)
     expect(modelCalls).toBe(1)
-    expect(maybeAppendDailySummary).not.toHaveBeenCalled()
+    expect(processRunMemory).not.toHaveBeenCalled()
   })
 
   it('compacts history when token count exceeds threshold', async () => {
@@ -309,7 +318,7 @@ describe('runAgentLoop', () => {
     expect(calls[0]?.tools).toEqual(toolDefinitionsShape([echoTool.name]))
   })
 
-  it('summarizes session-style runs with the latest user message', async () => {
+  it('processes session-style runs with the latest user message', async () => {
     const config = createDefaultConfig('/tmp/project')
     const messages: ChatMessage[] = [
       { role: 'system', content: 'system' },
@@ -317,44 +326,36 @@ describe('runAgentLoop', () => {
       { role: 'assistant', content: 'older answer' },
       { role: 'user', content: 'latest request' }
     ]
-    const summaryInputs: Array<{ userPrompt: string; finalText: string }> = []
+    const memoryInputs: Array<{ runId: string; userPrompt: string; finalText: string }> = []
 
     const result = await runAgentLoop({
       config,
       messages,
       tools: [],
-      dailySummary: {
-        maybeAppendDailySummary: async ({ userPrompt, finalText }) => {
-          summaryInputs.push({ userPrompt, finalText })
-          return true
-        }
-      },
+      runId: 'run-1',
+      personalMemory: { processRunMemory: memoryProcessor(memoryInputs) },
       callModel: async (): Promise<ModelResponse> => ({ content: 'latest final answer', toolCalls: [] })
     })
 
     expect(result.finalText).toBe('latest final answer')
-    expect(summaryInputs).toEqual([{ userPrompt: 'latest request', finalText: 'latest final answer' }])
+    expect(memoryInputs).toEqual([{ runId: 'run-1', userPrompt: 'latest request', finalText: 'latest final answer' }])
   })
 
-  it('summarizes session-style runs with the latest real user message after an empty-response retry', async () => {
+  it('processes session-style runs with the latest real user message after an empty-response retry', async () => {
     const config = createDefaultConfig('/tmp/project')
     const messages: ChatMessage[] = [
       { role: 'system', content: 'system' },
       { role: 'user', content: 'original request' }
     ]
-    const summaryInputs: Array<{ userPrompt: string; finalText: string }> = []
+    const memoryInputs: Array<{ runId: string; userPrompt: string; finalText: string }> = []
     let calls = 0
 
     const result = await runAgentLoop({
       config,
       messages,
       tools: [],
-      dailySummary: {
-        maybeAppendDailySummary: async ({ userPrompt, finalText }) => {
-          summaryInputs.push({ userPrompt, finalText })
-          return true
-        }
-      },
+      runId: 'run-1',
+      personalMemory: { processRunMemory: memoryProcessor(memoryInputs) },
       callModel: async (): Promise<ModelResponse> => {
         calls += 1
         if (calls === 1) {
@@ -366,7 +367,7 @@ describe('runAgentLoop', () => {
     })
 
     expect(result.finalText).toBe('final after retry')
-    expect(summaryInputs).toEqual([{ userPrompt: 'original request', finalText: 'final after retry' }])
+    expect(memoryInputs).toEqual([{ runId: 'run-1', userPrompt: 'original request', finalText: 'final after retry' }])
   })
 
   it('snips messages before model calls while preserving the caller message array', async () => {
@@ -526,18 +527,14 @@ describe('runAgentLoop', () => {
   it('executes tool calls and feeds the result back to the model', async () => {
     let calls = 0
     const seenMessages: ChatMessage[][] = []
-    const summaryInputs: Array<{ userPrompt: string; finalText: string }> = []
+    const memoryInputs: Array<{ runId: string; userPrompt: string; finalText: string }> = []
     const result = await runAgentLoop({
       config: createDefaultConfig('/tmp/project'),
       systemPrompt: 'system',
       userPrompt: 'echo',
       tools: [echoTool],
-      dailySummary: {
-        maybeAppendDailySummary: async ({ userPrompt, finalText }) => {
-          summaryInputs.push({ userPrompt, finalText })
-          return true
-        }
-      },
+      runId: 'run-1',
+      personalMemory: { processRunMemory: memoryProcessor(memoryInputs) },
       callModel: async ({ messages }): Promise<ModelResponse> => {
         calls += 1
         seenMessages.push([...messages])
@@ -564,7 +561,7 @@ describe('runAgentLoop', () => {
       tool_call_id: 'call-1',
       content: 'tool output'
     })
-    expect(summaryInputs).toEqual([{ userPrompt: 'echo', finalText: 'done after tool' }])
+    expect(memoryInputs).toEqual([{ runId: 'run-1', userPrompt: 'echo', finalText: 'done after tool' }])
   })
 
   it('preserves provider metadata on assistant tool-call messages', async () => {
@@ -750,16 +747,19 @@ describe('runAgentLoop', () => {
     expect(events).toEqual(['thinking:start', 'thinking:stop', 'response'])
   })
 
-  it('writes only a durable final summary for tool-assisted work', async () => {
+  it('delegates only the durable final answer to personal memory after tool-assisted work', async () => {
     const root = await createTempDir()
     const config = createDefaultConfig(root)
     let calls = 0
+    const memoryInputs: Array<{ runId: string; userPrompt: string; finalText: string }> = []
 
     const result = await runAgentLoop({
       config,
       systemPrompt: 'system',
-      userPrompt: 'Remember: daily memory should store content summaries instead of tool-call logs.',
+      userPrompt: 'Remember: memory should store content summaries instead of tool-call logs.',
       tools: [echoTool],
+      runId: 'run-1',
+      personalMemory: { processRunMemory: memoryProcessor(memoryInputs) },
       callModel: async ({ tools }): Promise<ModelResponse> => {
         calls += 1
         if (calls === 1) {
@@ -778,32 +778,29 @@ describe('runAgentLoop', () => {
         if (calls === 2) {
           expect(tools).not.toEqual([])
           return {
-            content: 'User prefers daily memory to store content summaries instead of tool-call logs.',
+            content: 'User prefers memory to store content summaries instead of tool-call logs.',
             toolCalls: []
           }
         }
 
-        expect(tools).toEqual([])
-        return {
-          content: JSON.stringify({
-            shouldRemember: true,
-            summary: 'User prefers daily memory to store content summaries instead of tool-call logs.'
-          }),
-          toolCalls: []
-        }
+        throw new Error('memory processing should not call the chat model directly in this test')
       }
     })
 
-    expect(result.finalText).toBe('User prefers daily memory to store content summaries instead of tool-call logs.')
-    expect(calls).toBe(3)
-    const dailyMemory = await readFile(join(root, '.cyrene', 'memory', 'daily.md'), 'utf8')
-    expect(dailyMemory).toContain('User prefers daily memory to store content summaries instead of tool-call logs.')
-    expect(dailyMemory).not.toContain('echo ->')
+    expect(result.finalText).toBe('User prefers memory to store content summaries instead of tool-call logs.')
+    expect(calls).toBe(2)
+    expect(memoryInputs).toEqual([
+      {
+        runId: 'run-1',
+        userPrompt: 'Remember: memory should store content summaries instead of tool-call logs.',
+        finalText: 'User prefers memory to store content summaries instead of tool-call logs.'
+      }
+    ])
   })
 
   it('exposes failed-tool outcomes through final answer summary input', async () => {
     const config = createDefaultConfig('/tmp/project')
-    const summaryInputs: Array<{ userPrompt: string; finalText: string }> = []
+    const memoryInputs: Array<{ runId: string; userPrompt: string; finalText: string }> = []
     let calls = 0
 
     const result = await runAgentLoop({
@@ -811,12 +808,8 @@ describe('runAgentLoop', () => {
       systemPrompt: 'system',
       userPrompt: 'search',
       tools: [failingWebSearchTool],
-      dailySummary: {
-        maybeAppendDailySummary: async ({ userPrompt, finalText }) => {
-          summaryInputs.push({ userPrompt, finalText })
-          return true
-        }
-      },
+      runId: 'run-1',
+      personalMemory: { processRunMemory: memoryProcessor(memoryInputs) },
       callModel: async (): Promise<ModelResponse> => {
         calls += 1
         if (calls === 1) {
@@ -836,21 +829,20 @@ describe('runAgentLoop', () => {
     })
 
     expect(result.finalText).toBe('Search failed because network was down.')
-    expect(summaryInputs).toEqual([
-      { userPrompt: 'search', finalText: 'Search failed because network was down.' }
-    ])
+    expect(memoryInputs).toEqual([{ runId: 'run-1', userPrompt: 'search', finalText: 'Search failed because network was down.' }])
   })
 
-  it('continues when daily summary logging fails', async () => {
+  it('continues when personal memory processing fails', async () => {
     let calls = 0
     const result = await runAgentLoop({
       config: createDefaultConfig('/tmp/project'),
       systemPrompt: 'system',
       userPrompt: 'echo',
       tools: [echoTool],
-      dailySummary: {
-        maybeAppendDailySummary: async () => {
-          throw new Error('daily summary unavailable')
+      runId: 'run-1',
+      personalMemory: {
+        processRunMemory: async () => {
+          throw new Error('memory processor unavailable')
         }
       },
       callModel: async (): Promise<ModelResponse> => {

@@ -1,13 +1,17 @@
 import { mkdir, mkdtemp, readFile, realpath, rm, symlink, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { afterEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { CompactDailyIfNeededInput } from '../src/daily-compaction.js'
 import type { CallModelInput, ModelResponse } from '../src/llm-client.js'
 import { startWebServer, type WebServerHandle } from '../src/web/server.js'
 
 const servers: WebServerHandle[] = []
 const tempDirs: string[] = []
+
+beforeEach(() => {
+  vi.stubEnv('CYRENE_MEMORY_AUTO_EXTRACT', '0')
+})
 
 afterEach(async () => {
   try {
@@ -729,7 +733,7 @@ describe('startWebServer', () => {
     expect(callModel).not.toHaveBeenCalled()
   })
 
-  it('delegates daily compaction after successful runs', async () => {
+  it('does not delegate legacy daily compaction after successful runs', async () => {
     const cwd = await createTempCwd()
     const callModel = vi.fn(async (_input: CallModelInput): Promise<ModelResponse> => ({ content: 'web answer', toolCalls: [] }))
     const compactDailyIfNeeded = vi.fn(async (_input: CompactDailyIfNeededInput) => {})
@@ -754,15 +758,10 @@ describe('startWebServer', () => {
     await server.close()
     servers.pop()
 
-    expect(compactDailyIfNeeded).toHaveBeenCalledTimes(1)
-    expect(compactDailyIfNeeded).toHaveBeenCalledWith({
-      cwd: join(cwd, 'workspace'),
-      config: expect.objectContaining({ cwd: join(cwd, 'workspace') }),
-      callModel
-    })
+    expect(compactDailyIfNeeded).not.toHaveBeenCalled()
   })
 
-  it('does not delegate daily compaction after failed runs', async () => {
+  it('does not delegate legacy daily compaction after failed runs', async () => {
     const compactDailyIfNeeded = vi.fn(async (_input: CompactDailyIfNeededInput) => {})
     const callModel = vi.fn(async (): Promise<ModelResponse> => {
       throw new Error('model unavailable')
@@ -782,7 +781,7 @@ describe('startWebServer', () => {
     expect(compactDailyIfNeeded).not.toHaveBeenCalled()
   })
 
-  it('does not emit an error event when injected daily compaction fails', async () => {
+  it('ignores injected legacy daily compaction hooks', async () => {
     const compactDailyIfNeeded = vi.fn(async (_input: CompactDailyIfNeededInput) => {
       throw new Error('compaction failed')
     })
@@ -798,11 +797,10 @@ describe('startWebServer', () => {
     const createBody = (await createResponse.json()) as { runId: string }
 
     await readRunEventStream(`${server.url}/api/runs/${createBody.runId}/events`)
-    await waitUntil(() => compactDailyIfNeeded.mock.calls.length > 0)
 
     const { body: replayBody } = await readRunEventStream(`${server.url}/api/runs/${createBody.runId}/events`)
 
-    expect(compactDailyIfNeeded).toHaveBeenCalledTimes(1)
+    expect(compactDailyIfNeeded).not.toHaveBeenCalled()
     expect(replayBody).toContain('"type":"final","text":"web answer"')
     expect(replayBody).not.toContain('"type":"error"')
     expect(replayBody).not.toContain('compaction failed')
@@ -1466,6 +1464,7 @@ async function startServer(
   callModel?: (input: CallModelInput) => Promise<ModelResponse>,
   compactDailyIfNeeded?: (input: CompactDailyIfNeededInput) => Promise<void>
 ): Promise<WebServerHandle> {
+  vi.stubEnv('CYRENE_MEMORY_AUTO_EXTRACT', '0')
   const cwd = await createTempCwd()
   const server = await startWebServer({
     cwd,

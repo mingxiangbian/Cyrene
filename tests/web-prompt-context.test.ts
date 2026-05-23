@@ -2,6 +2,8 @@ import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import { afterEach, describe, expect, it, vi } from 'vitest'
+import { writeActiveMemories } from '../src/memory/memory-store.js'
+import type { CyreneMemory } from '../src/memory/types.js'
 import { buildAgentRuntime } from '../src/web/prompt-context.js'
 
 const originalHome = process.env.HOME
@@ -38,13 +40,17 @@ describe('buildAgentRuntime', () => {
     await writeFile(join(home, 'workspace', '.cyrene', 'Rule.md'), 'Workspace rule.\n')
     await writeFile(join(root, '.cyrene', 'Rule.md'), 'Project rule.\n')
     await writeFile(join(root, '.cyrene', 'instructions.md'), 'Use TDD.\n')
-    await writeFile(join(root, '.cyrene', 'memory', 'MEMORY.md'), '- [Code Style](style.md) — local style\n')
-    await writeFile(join(root, '.cyrene', 'memory', 'style.md'), 'Prefer small patches.\n')
-    await writeFile(join(userCyreneDir, 'memory', 'MEMORY.md'), '- [Global Fact](global.md) — global fact\n')
-    await writeFile(join(userCyreneDir, 'memory', 'global.md'), 'Remember global fact.\n')
-    await writeFile(join(root, '.cyrene', 'memory', 'daily.md'), 'recent one\nrecent two\n')
+    await writeActiveMemories(root, [
+      createMemory({
+        id: 'project-style',
+        content: 'Prefer small patches.',
+        normalizedKey: 'prefer-small-patches'
+      })
+    ])
 
-    const runtime = await buildAgentRuntime(root, new Date('2026-05-20T16:30:00.000Z'))
+    const runtime = await buildAgentRuntime(root, new Date('2026-05-20T16:30:00.000Z'), {
+      memoryQuery: 'small patches'
+    })
 
     expect(runtime.config.cwd).toBe(resolve(root))
     expect(runtime.config.writableRoots).toEqual([resolve(root)])
@@ -70,9 +76,7 @@ describe('buildAgentRuntime', () => {
       'Workspace rule.',
       'Project rule.',
       '## Project Instructions\n\nUse TDD.',
-      '## Project Memory: Code Style\n\nPrefer small patches.',
-      '## Global Memory: Global Fact\n\nRemember global fact.',
-      '## Recent Daily Memory\n\nrecent one\nrecent two'
+      '## Relevant Memory\n- Prefer small patches.'
     ]
     let lastIndex = -1
     for (const expected of expectedOrder) {
@@ -103,3 +107,29 @@ describe('buildAgentRuntime', () => {
     expect(names).toEqual(['file_read', 'file_write', 'file_edit', 'grep', 'glob', 'ask_user'])
   })
 })
+
+function createMemory(overrides: Partial<CyreneMemory> = {}): CyreneMemory {
+  return {
+    id: 'memory-1',
+    domain: 'project',
+    type: 'project_fact',
+    strength: 'hard',
+    scope: 'project',
+    status: 'active',
+    content: 'Cyrene uses Personal Memory Core.',
+    normalizedKey: 'cyrene-personal-memory-core',
+    evidence: [{ runId: 'run-1', summary: 'Test evidence.' }],
+    source: 'assistant_observed',
+    scores: {
+      evidenceStrength: 0.9,
+      stability: 0.9,
+      usefulness: 0.8,
+      safety: 0.95,
+      sensitivity: 0.1
+    },
+    createdAt: '2026-05-23T00:00:00.000Z',
+    updatedAt: '2026-05-23T00:00:00.000Z',
+    tags: [],
+    ...overrides
+  }
+}

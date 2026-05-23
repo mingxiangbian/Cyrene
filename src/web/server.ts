@@ -328,7 +328,7 @@ async function createRun(
   writeJson(response, 202, { runId: record.id, sessionId: record.sessionId, modelContext: record.modelContext })
 
   const runPromise = Promise.resolve()
-    .then(() => runWebAgent(record, context.callModel, context.compactDailyIfNeeded))
+    .then(() => runWebAgent(record, context.callModel))
     .finally(() => {
       context.activeRuns.delete(runPromise)
     })
@@ -337,8 +337,7 @@ async function createRun(
 
 async function runWebAgent(
   record: RunRecord,
-  callModel?: (input: CallModelInput) => Promise<ModelResponse>,
-  compactDailyIfNeeded?: (input: CompactDailyIfNeededInput) => Promise<void>
+  callModel?: (input: CallModelInput) => Promise<ModelResponse>
 ): Promise<void> {
   const recorder = await createRunRecorder({
     cwd: record.cwd,
@@ -354,13 +353,16 @@ async function runWebAgent(
   let currentTurnStartIndex = 0
   try {
     const runtime = await buildAgentRuntime(record.workspace.absolutePath, new Date(), {
-      thinkingMode: record.thinkingMode
+      thinkingMode: record.thinkingMode,
+      memoryQuery: record.userMessage.content,
+      memoryTask: 'conversation'
     })
     modelMessages = [{ role: 'system', content: runtime.systemPrompt }, ...record.messages]
     const persistedStartIndex = modelMessages.length
     currentTurnStartIndex = Math.max(1, modelMessages.length - 1)
     const result = await runAgentLoop({
       config: runtime.config,
+      runId: record.id,
       tools: runtime.tools,
       messages: modelMessages,
       observer: recorder.createObserver(createWebObserver((event) => {
@@ -380,15 +382,6 @@ async function runWebAgent(
     await recorder.recordMessages(traceMessages)
     await recorder.finalize({ status: 'ok', finalText: result.finalText })
     emit(record, { type: 'final', text: result.finalText })
-    try {
-      await (compactDailyIfNeeded ?? defaultCompactDailyIfNeeded)({
-        cwd: runtime.config.cwd,
-        config: runtime.config,
-        callModel
-      })
-    } catch {
-      // Daily compaction is best effort and must not change Web run results.
-    }
   } catch (error) {
     await recorder.recordMessages(modelMessages?.slice(currentTurnStartIndex) ?? [record.userMessage])
     await recorder.finalize({ status: 'error', finalText: '', error })

@@ -10,11 +10,36 @@ const execFileAsync = promisify(execFile)
 
 function cliEnv(overrides: NodeJS.ProcessEnv = {}): NodeJS.ProcessEnv {
   const { FORCE_COLOR: _forceColor, NO_COLOR: _noColor, ...env } = process.env
-  return { ...env, ...overrides }
+  return { ...env, CYRENE_MEMORY_AUTO_EXTRACT: '0', ...overrides }
 }
 
 function expectOnlyTraceLine(stderr: string): void {
   expect(stderr).toMatch(/^trace: \.cyrene\/runs\/[A-Za-z0-9_.-]+\n$/)
+}
+
+function activeMemoryLine(input: { id: string; content: string; normalizedKey: string }): string {
+  return `${JSON.stringify({
+    id: input.id,
+    domain: 'project',
+    type: 'project_fact',
+    strength: 'hard',
+    scope: 'project',
+    status: 'active',
+    content: input.content,
+    normalizedKey: input.normalizedKey,
+    evidence: [{ runId: 'run-1', summary: 'Test evidence.' }],
+    source: 'assistant_observed',
+    scores: {
+      evidenceStrength: 0.9,
+      stability: 0.9,
+      usefulness: 0.8,
+      safety: 0.95,
+      sensitivity: 0.1
+    },
+    createdAt: '2026-05-23T00:00:00.000Z',
+    updatedAt: '2026-05-23T00:00:00.000Z',
+    tags: []
+  })}\n`
 }
 
 describe('main CLI', () => {
@@ -179,7 +204,7 @@ describe('main CLI', () => {
     }
   }, 15_000)
 
-  it('appends soul, Rule.md stack, project/global memories, and daily memory to the system prompt', async () => {
+  it('appends soul, Rule.md stack, and typed memory to the system prompt', async () => {
     const home = await mkdtemp(join(tmpdir(), 'cyrene-main-home-'))
     const root = join(home, 'workspace', 'project')
     const userCyreneDir = join(home, '.cyrene')
@@ -191,13 +216,15 @@ describe('main CLI', () => {
     await writeFile(join(home, 'workspace', '.cyrene', 'Rule.md'), 'Workspace rule.\n')
     await writeFile(join(root, '.cyrene', 'Rule.md'), 'Project rule.\n')
     await writeFile(join(root, '.cyrene', 'instructions.md'), 'Use TDD.\n')
-    await mkdir(join(root, '.cyrene', 'memory', 'sessions'), { recursive: true })
-    await writeFile(join(root, '.cyrene', 'memory', 'MEMORY.md'), '- [Code Style](style.md) — local style\n')
-    await writeFile(join(root, '.cyrene', 'memory', 'style.md'), 'Prefer small patches.\n')
-    await writeFile(join(userCyreneDir, 'memory', 'MEMORY.md'), '- [Global Memory](global.md) — global fact\n')
-    await writeFile(join(userCyreneDir, 'memory', 'global.md'), 'Remember global fact.\n')
-    await writeFile(join(root, '.cyrene', 'memory', 'daily.md'), 'recent one\nrecent two\n')
-    await writeFile(join(root, '.cyrene', 'memory', 'sessions', '2026-05-12.md'), 'Previous session summary.\n')
+    await mkdir(join(root, '.cyrene', 'memory'), { recursive: true })
+    await writeFile(
+      join(root, '.cyrene', 'memory', 'index.jsonl'),
+      activeMemoryLine({
+        id: 'code-style',
+        content: 'Prefer small patches.',
+        normalizedKey: 'prefer-small-patches'
+      })
+    )
 
     let requestBody: unknown
     const server = createServer((request, response) => {
@@ -244,9 +271,7 @@ describe('main CLI', () => {
         'Workspace rule.',
         'Project rule.',
         '## Project Instructions\n\nUse TDD.',
-        '## Project Memory: Code Style\n\nPrefer small patches.',
-        '## Global Memory: Global Memory\n\nRemember global fact.',
-        '## Recent Daily Memory\n\nrecent one\nrecent two'
+        '## Relevant Memory\n- Prefer small patches.'
       ]
       let lastIndex = -1
       for (const expected of expectedOrder) {
@@ -256,6 +281,7 @@ describe('main CLI', () => {
       }
       expect(systemPrompt).not.toContain('Previous Session')
       expect(systemPrompt).not.toContain('Previous session summary')
+      expect(systemPrompt).not.toContain('Recent Daily Memory')
     } finally {
       await new Promise<void>((resolve, reject) => {
         server.close((error) => {
@@ -497,7 +523,7 @@ describe('main CLI', () => {
     }
   })
 
-  it('compacts daily memory after a successful one-shot run when the threshold is reached', async () => {
+  it('does not compact legacy daily memory after a successful one-shot run', async () => {
     const home = await mkdtemp(join(tmpdir(), 'cyrene-main-home-'))
     const root = join(home, 'workspace')
     const memoryDir = join(root, '.cyrene', 'memory')
@@ -568,12 +594,10 @@ describe('main CLI', () => {
 
       expect(result.stdout.trim()).toBe('ok')
       expectOnlyTraceLine(result.stderr)
-      expect(requestCount).toBe(2)
-      await expect(readFile(join(memoryDir, 'daily.md'), 'utf8')).resolves.toBe('')
-      await expect(readFile(join(memoryDir, 'daily.archive.md'), 'utf8')).resolves.toBe(dailyContent)
-      await expect(readFile(join(memoryDir, 'daily-project-fact.md'), 'utf8')).resolves.toBe(
-        'Daily memory compaction ran after the CLI one-shot completed.\n'
-      )
+      expect(requestCount).toBe(1)
+      await expect(readFile(join(memoryDir, 'daily.md'), 'utf8')).resolves.toBe(dailyContent)
+      await expect(readFile(join(memoryDir, 'daily.archive.md'), 'utf8')).rejects.toMatchObject({ code: 'ENOENT' })
+      await expect(readFile(join(memoryDir, 'daily-project-fact.md'), 'utf8')).rejects.toMatchObject({ code: 'ENOENT' })
     } finally {
       await new Promise<void>((resolve, reject) => {
         server.close((error) => {

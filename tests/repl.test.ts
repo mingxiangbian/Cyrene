@@ -4,7 +4,6 @@ import { join } from 'node:path'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { z } from 'zod'
 import { createDefaultConfig } from '../src/config.js'
-import type { CompactDailyIfNeededInput } from '../src/daily-compaction.js'
 import type { CallModelInput, ChatMessage, ModelResponse } from '../src/llm-client.js'
 import { runRepl, runReplTurn } from '../src/repl.js'
 import { appendSessionEvent, createSession, loadSession } from '../src/session-store.js'
@@ -307,10 +306,9 @@ describe('runRepl', () => {
     await Promise.all(tempDirs.splice(0).map((dir) => rm(dir, { recursive: true, force: true })))
   })
 
-  it('delegates daily compaction after graceful exit', async () => {
+  it('does not run legacy daily compaction after graceful exit', async () => {
     const config = createDefaultConfig('/tmp/project')
     const readline = createTestReadline(['exit'])
-    const compactDailyIfNeeded = vi.fn(async (_input: CompactDailyIfNeededInput) => {})
     const callModel = vi.fn(async (_input: CallModelInput): Promise<ModelResponse> => ({ content: 'unused', toolCalls: [] }))
     const consoleLog = vi.spyOn(console, 'log').mockImplementation(() => {})
 
@@ -320,8 +318,7 @@ describe('runRepl', () => {
         systemPrompt: 'system rules',
         tools: [],
         callModel,
-        readline,
-        compactDailyIfNeeded
+        readline
       })
       expect(consoleLog).toHaveBeenCalledWith(expect.stringContaining('Prism Agent'))
       expect(consoleLog).toHaveBeenCalledWith(expect.stringContaining(config.model.model))
@@ -331,19 +328,11 @@ describe('runRepl', () => {
 
     expect(readline.close).toHaveBeenCalledTimes(1)
     expect(callModel).not.toHaveBeenCalled()
-    expect(compactDailyIfNeeded).toHaveBeenCalledWith({
-      cwd: config.cwd,
-      config,
-      callModel
-    })
   })
 
-  it('still resolves graceful exit when daily compaction fails', async () => {
+  it('still resolves graceful exit without daily compaction hooks', async () => {
     const config = createDefaultConfig('/tmp/project')
     const readline = createTestReadline(['exit'])
-    const compactDailyIfNeeded = vi.fn(async (_input: CompactDailyIfNeededInput) => {
-      throw new Error('daily compaction failed')
-    })
     const callModel = vi.fn(async (_input: CallModelInput): Promise<ModelResponse> => ({ content: 'unused', toolCalls: [] }))
     const consoleLog = vi.spyOn(console, 'log').mockImplementation(() => {})
 
@@ -354,8 +343,7 @@ describe('runRepl', () => {
           systemPrompt: 'system rules',
           tools: [],
           callModel,
-          readline,
-          compactDailyIfNeeded
+          readline
         })
       ).resolves.toBeUndefined()
     } finally {
@@ -364,13 +352,11 @@ describe('runRepl', () => {
 
     expect(readline.close).toHaveBeenCalledTimes(1)
     expect(callModel).not.toHaveBeenCalled()
-    expect(compactDailyIfNeeded).toHaveBeenCalledTimes(1)
   })
 
   it('prints the Prism mascot welcome before reading REPL input', async () => {
     const config = createDefaultConfig('/tmp/project')
     const readline = createTestReadline(['exit'])
-    const compactDailyIfNeeded = vi.fn(async (_input: CompactDailyIfNeededInput) => {})
     const callModel = vi.fn(
       async (_input: CallModelInput): Promise<ModelResponse> => ({ content: 'unused', toolCalls: [] })
     )
@@ -382,8 +368,7 @@ describe('runRepl', () => {
         systemPrompt: 'system rules',
         tools: [],
         callModel,
-        readline,
-        compactDailyIfNeeded
+        readline
       })
       expect(consoleLog).toHaveBeenCalledWith(expect.stringContaining('Prism Agent'))
       expect(consoleLog).toHaveBeenCalledWith(expect.stringContaining(config.model.model))
@@ -395,7 +380,6 @@ describe('runRepl', () => {
   it('prints REPL tool-count metadata to stderr', async () => {
     const config = createDefaultConfig('/tmp/project')
     const readline = createTestReadline(['read file', 'exit'])
-    const compactDailyIfNeeded = vi.fn(async (_input: CompactDailyIfNeededInput) => {})
     let callCount = 0
     const callModel = vi.fn(async (_input: CallModelInput): Promise<ModelResponse> => {
       callCount += 1
@@ -423,8 +407,7 @@ describe('runRepl', () => {
         systemPrompt: 'system rules',
         tools: [trackReadTool],
         callModel,
-        readline,
-        compactDailyIfNeeded
+        readline
       })
       expect(consoleLog).toHaveBeenCalledWith(expect.stringContaining('read done'))
       expect(consoleLog.mock.calls.flat()).not.toContainEqual(expect.stringContaining('tool calls:'))
@@ -453,7 +436,6 @@ describe('runRepl', () => {
 
     const seenMessages: ChatMessage[][] = []
     const readline = createTestReadline(['next question', 'exit'])
-    const compactDailyIfNeeded = vi.fn(async (_input: CompactDailyIfNeededInput) => {})
     const callModel = vi.fn(async (input: CallModelInput): Promise<ModelResponse> => {
       seenMessages.push(input.messages.map((message) => ({ ...message })))
       return { content: 'next answer', toolCalls: [] }
@@ -467,7 +449,6 @@ describe('runRepl', () => {
         tools: [],
         callModel,
         readline,
-        compactDailyIfNeeded,
         resumeSessionId: session.id
       })
     } finally {
@@ -497,9 +478,8 @@ describe('runRepl', () => {
     })
   })
 
-  it('does not compact daily memory when a turn fails before graceful exit', async () => {
+  it('closes the REPL when a turn fails before graceful exit', async () => {
     const readline = createTestReadline(['hello'])
-    const compactDailyIfNeeded = vi.fn(async (_input: CompactDailyIfNeededInput) => {})
     const callModel = vi.fn(async (_input: CallModelInput): Promise<ModelResponse> => {
       throw new Error('model failed')
     })
@@ -512,8 +492,7 @@ describe('runRepl', () => {
           systemPrompt: 'system rules',
           tools: [],
           callModel,
-          readline,
-          compactDailyIfNeeded
+          readline
         })
       ).rejects.toThrow('model failed')
     } finally {
@@ -522,6 +501,5 @@ describe('runRepl', () => {
 
     expect(readline.close).toHaveBeenCalledTimes(1)
     expect(callModel).toHaveBeenCalledTimes(1)
-    expect(compactDailyIfNeeded).not.toHaveBeenCalled()
   })
 })

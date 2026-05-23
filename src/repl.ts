@@ -3,10 +3,6 @@ import { createInterface } from 'node:readline/promises'
 import chalk from 'chalk'
 import { runAgentLoop } from './agent-loop.js'
 import type { AppConfig } from './config.js'
-import {
-  compactDailyIfNeeded as defaultCompactDailyIfNeeded,
-  type CompactDailyIfNeededInput
-} from './daily-compaction.js'
 import { callModel as defaultCallModel, type CallModelInput, type ChatMessage, type ModelResponse } from './llm-client.js'
 import { contextInfoForRoute } from './models/provider-router.js'
 import { appendSessionEvent, createSession, loadSession } from './session-store.js'
@@ -103,6 +99,7 @@ export async function runReplTurn(input: RunReplTurnInput): Promise<RunReplTurnR
   try {
     result = await runAgentLoop({
       config: input.config,
+      runId: recorder?.runId,
       messages: input.messages,
       tools: input.tools,
       observer: recorder?.createObserver(input.observer) ?? input.observer,
@@ -149,7 +146,6 @@ export async function runRepl(inputConfig: {
   tools: Tool<unknown>[]
   callModel?: (input: CallModelInput) => Promise<ModelResponse>
   readline?: ReplReadline
-  compactDailyIfNeeded?: (input: CompactDailyIfNeededInput) => Promise<void>
   resumeSessionId?: string
 }): Promise<void> {
   const resumed = inputConfig.resumeSessionId === undefined
@@ -177,8 +173,6 @@ export async function runRepl(inputConfig: {
   }
   const rl = inputConfig.readline ?? createInterface({ input, output })
   const observer = createTerminalObserver(stderr)
-  let gracefulExit = false
-
   try {
     console.log(renderWelcome({ modelName: inputConfig.config.model.model }))
 
@@ -196,7 +190,6 @@ export async function runRepl(inputConfig: {
       })
 
       if (result.kind === 'exit') {
-        gracefulExit = true
         break
       }
 
@@ -214,18 +207,6 @@ export async function runRepl(inputConfig: {
     }
   } finally {
     rl.close()
-  }
-
-  if (gracefulExit) {
-    try {
-      await (inputConfig.compactDailyIfNeeded ?? defaultCompactDailyIfNeeded)({
-        cwd: inputConfig.config.cwd,
-        config: inputConfig.config,
-        callModel: inputConfig.callModel ?? defaultCallModel
-      })
-    } catch {
-      // Daily compaction is best-effort on exit.
-    }
   }
 }
 

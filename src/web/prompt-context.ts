@@ -5,11 +5,9 @@ import type { AppConfig } from '../config.js'
 import { createDefaultConfig } from '../config.js'
 import { contextInfoForRoute } from '../models/provider-router.js'
 import type { ThinkingMode } from '../models/types.js'
+import { formatMemoryContext, retrieveMemories } from '../memory/memory-retriever.js'
 import {
-  loadDaily,
-  loadGlobalMemories,
   loadInstructionsIfExists,
-  loadProjectMemories,
   loadRuleStack,
   loadSoul
 } from '../memory.js'
@@ -25,6 +23,8 @@ export interface AgentRuntime {
 
 export interface AgentRuntimeOverrides {
   thinkingMode?: ThinkingMode
+  memoryQuery?: string
+  memoryTask?: 'coding' | 'planning' | 'conversation' | 'memory' | 'debugging'
 }
 
 export async function buildAgentRuntime(
@@ -41,9 +41,15 @@ export async function buildAgentRuntime(
   const persona = await loadSoul(config.userCyreneDir, config.cwd)
   const rules = await loadRuleStack(config.cwd, config.userCyreneDir)
   const projectInstructions = await loadInstructionsIfExists(config.cwd)
-  const projectMemories = await loadProjectMemories(config.cwd)
-  const globalMemories = await loadGlobalMemories(config.userCyreneDir)
-  const daily = await loadDaily(config.cwd, config.dailyLoadLines)
+  const memories = await retrieveMemories({
+    cwd: config.cwd,
+    userCyreneDir: config.userCyreneDir,
+    query: overrides.memoryQuery ?? '',
+    task: overrides.memoryTask ?? 'memory',
+    maxItems: 8,
+    maxTokens: 1200
+  })
+  const memoryContext = formatMemoryContext(memories)
   const systemPrompt = [
     baseSystemPrompt.trimEnd(),
     `# currentDate\nToday's date is ${currentDateText}.`,
@@ -51,9 +57,7 @@ export async function buildAgentRuntime(
     persona,
     rules,
     projectInstructions,
-    projectMemories,
-    globalMemories,
-    daily
+    memoryContext
   ]
     .filter(Boolean)
     .join('\n\n')

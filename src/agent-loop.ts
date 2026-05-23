@@ -7,8 +7,8 @@ import {
   snipMessages
 } from './context.js'
 import type { AppConfig } from './config.js'
-import { maybeAppendDailySummary } from './daily-summary.js'
 import { callModel as defaultCallModel, type CallModelInput, type ChatMessage, type ModelResponse } from './llm-client.js'
+import { processRunMemory } from './memory/memory-runtime.js'
 import { contextInfoForRoute } from './models/provider-router.js'
 import { estimateTokensForMessages } from './token-counter.js'
 import { executeToolCall, toolDefinitions } from './tools/index.js'
@@ -22,10 +22,11 @@ const EMPTY_RESPONSE_RETRY_PROMPT = 'Your previous response was empty. Provide a
 interface RunAgentLoopBaseInput {
   config: AppConfig
   tools: Tool<unknown>[]
+  runId?: string
   toolContext?: ToolContext
   observer?: AgentObserver
-  dailySummary?: {
-    maybeAppendDailySummary: typeof maybeAppendDailySummary
+  personalMemory?: {
+    processRunMemory: typeof processRunMemory
   }
   callModel?: (input: CallModelInput) => Promise<ModelResponse>
 }
@@ -51,7 +52,7 @@ export interface RunAgentLoopResult {
 
 export async function runAgentLoop(input: RunAgentLoopInput): Promise<RunAgentLoopResult> {
   const messages = input.messages ?? buildInitialMessages(input.systemPrompt, input.userPrompt)
-  const dailySummaryUserPrompt = getCurrentUserPrompt(input)
+  const memoryUserPrompt = getCurrentUserPrompt(input)
   const callModel = input.callModel ?? defaultCallModel
   const observer = input.observer
   const context: ToolContext = input.toolContext ?? {
@@ -137,7 +138,7 @@ export async function runAgentLoop(input: RunAgentLoopInput): Promise<RunAgentLo
 
       messages.push({ role: 'assistant', content: response.content })
       notifyObserver(() => observer?.onResponse(response.content))
-      await appendDailySummaryAfterFinal(input, dailySummaryUserPrompt, response.content, callModel)
+      await processMemoryAfterFinal(input, memoryUserPrompt, response.content, callModel)
       return { finalText: response.content, toolCallCount }
     }
 
@@ -217,26 +218,27 @@ export async function runAgentLoop(input: RunAgentLoopInput): Promise<RunAgentLo
   }
 }
 
-async function appendDailySummaryAfterFinal(
+async function processMemoryAfterFinal(
   input: RunAgentLoopInput,
   userPrompt: string | undefined,
   finalText: string,
   callModel: (input: CallModelInput) => Promise<ModelResponse>
 ): Promise<void> {
-  if (userPrompt === undefined) {
+  if (userPrompt === undefined || input.runId === undefined) {
     return
   }
 
   try {
-    await (input.dailySummary?.maybeAppendDailySummary ?? maybeAppendDailySummary)({
+    await (input.personalMemory?.processRunMemory ?? processRunMemory)({
       cwd: input.config.cwd,
       config: input.config,
+      runId: input.runId,
       userPrompt,
       finalText,
       callModel
     })
   } catch {
-    // Daily memory is best-effort and must not block the agent loop.
+    // Personal memory is best-effort and must not block the agent loop.
   }
 }
 

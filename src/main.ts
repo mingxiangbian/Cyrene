@@ -5,7 +5,6 @@ import { runAgentLoop } from './agent-loop.js'
 import { createDefaultConfig } from './config.js'
 import { formatConfigDoctor } from './config-doctor.js'
 import { buildInitialMessages } from './context.js'
-import { compactDailyIfNeeded } from './daily-compaction.js'
 import { callModel as defaultCallModel } from './llm-client.js'
 import { migrateLegacyMemory } from './memory/memory-migration.js'
 import { formatMemoryContext, retrieveMemories } from './memory/memory-retriever.js'
@@ -82,7 +81,10 @@ async function main(): Promise<void> {
     process.exit(1)
   }
 
-  const { config, systemPrompt, tools } = await buildAgentRuntime(options.cwd)
+  const { config, systemPrompt, tools } = await buildAgentRuntime(options.cwd, new Date(), {
+    memoryQuery: prompt,
+    memoryTask: prompt ? 'coding' : 'conversation'
+  })
 
   if (options.web) {
     const server = await startWebServer({ cwd: config.cwd, host: options.host, port })
@@ -108,6 +110,7 @@ async function main(): Promise<void> {
   try {
     const result = await runAgentLoop({
       config,
+      runId: recorder.runId,
       observer: recorder.createObserver(observer),
       messages,
       tools,
@@ -124,7 +127,6 @@ async function main(): Promise<void> {
     if (recorder.dir !== undefined) {
       console.error(`trace: .cyrene/runs/${recorder.runId}`)
     }
-    await compactDailyIfNeeded({ cwd: config.cwd, config })
   } catch (error) {
     await recorder.recordMessages(messages.slice(1))
     await recorder.finalize({ status: 'error', finalText: '', error })
