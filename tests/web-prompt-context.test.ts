@@ -49,6 +49,7 @@ describe('buildAgentRuntime', () => {
     expect(runtime.config.cwd).toBe(resolve(root))
     expect(runtime.config.writableRoots).toEqual([resolve(root)])
     expect(runtime.systemPrompt).toContain('You are Cyrene, a local API-first coding agent.')
+    expect(runtime.systemPrompt).toContain('Do not silently use a different file or resource as a substitute.')
     expect(runtime.systemPrompt).not.toContain('Claude Code-style')
     expect(runtime.systemPrompt).not.toContain('Anthropic')
     expect(runtime.systemPrompt).not.toContain('model router')
