@@ -49,6 +49,6 @@ export async function buildAgentRuntime(cwd: string, currentDate = new Date()): 
   return {
     config,
     systemPrompt,
-    tools: createCoreTools()
+    tools: createCoreTools(config)
   }
 }

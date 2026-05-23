@@ -1,26 +1,33 @@
+import type { AppConfig } from '../config.js'
 import { askUserTool } from './ask-user.js'
 import { bashTool } from './bash.js'
 import { fileEditTool } from './file-edit.js'
 import { fileReadTool } from './file-read.js'
 import { fileWriteTool } from './file-write.js'
-import { generateImageTool } from './generate-image.js'
 import { globTool } from './glob.js'
 import { grepTool } from './grep.js'
 import { webSearchTool } from './web-search.js'
 import type { Tool, ToolCall, ToolContext, ToolResult } from './types.js'
 
-export function createCoreTools(): Tool<unknown>[] {
-  return [
-    bashTool,
+export function createCoreTools(config: AppConfig): Tool<unknown>[] {
+  const tools = [
     fileReadTool,
     fileWriteTool,
     fileEditTool,
     grepTool,
     globTool,
-    webSearchTool,
-    generateImageTool,
     askUserTool
   ] as Tool<unknown>[]
+
+  if (config.features.bashEnabled) {
+    tools.push(bashTool)
+  }
+
+  if (config.features.webSearchEnabled) {
+    tools.push(webSearchTool)
+  }
+
+  return tools
 }
 
 export function toolDefinitions(tools: Tool<unknown>[]) {
