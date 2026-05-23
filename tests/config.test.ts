@@ -1,12 +1,22 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { homedir } from 'node:os'
+import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
+import { homedir, tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { createDefaultConfig } from '../src/config.js'
 
 describe('createDefaultConfig', () => {
-  afterEach(() => {
+  const tempDirs: string[] = []
+
+  afterEach(async () => {
     vi.unstubAllEnvs()
+    await Promise.all(tempDirs.splice(0).map((dir) => rm(dir, { recursive: true, force: true })))
   })
+
+  async function createTempDir(): Promise<string> {
+    const dir = await mkdtemp(join(tmpdir(), 'cyrene-config-'))
+    tempDirs.push(dir)
+    return dir
+  }
 
   it('uses API-first model environment values', () => {
     vi.stubEnv('CYRENE_BASE_URL', 'https://api.example.com/v1')
@@ -19,6 +29,59 @@ describe('createDefaultConfig', () => {
     expect(config.model.model).toBe('strong-model')
     expect(config.model.apiKey).toBe('secret-key')
     expect(config.model.temperature).toBe(0)
+  })
+
+  it('loads model configuration from project .env', async () => {
+    const root = await createTempDir()
+    await writeFile(
+      join(root, '.env'),
+      [
+        'CYRENE_BASE_URL=http://127.0.0.1:8080/v1',
+        'CYRENE_MODEL=Qwen3.5-9B-MLX-4bit',
+        'CYRENE_API_KEY=local-secret'
+      ].join('\n')
+    )
+
+    const config = createDefaultConfig(root)
+
+    expect(config.model.baseUrl).toBe('http://127.0.0.1:8080/v1')
+    expect(config.model.model).toBe('Qwen3.5-9B-MLX-4bit')
+    expect(config.model.apiKey).toBe('local-secret')
+  })
+
+  it('lets environment variables override project .env values', async () => {
+    const root = await createTempDir()
+    await writeFile(
+      join(root, '.env'),
+      [
+        'CYRENE_BASE_URL=http://127.0.0.1:8080/v1',
+        'CYRENE_MODEL=local-model'
+      ].join('\n')
+    )
+    vi.stubEnv('CYRENE_MODEL', 'shell-model')
+
+    const config = createDefaultConfig(root)
+
+    expect(config.model.baseUrl).toBe('http://127.0.0.1:8080/v1')
+    expect(config.model.model).toBe('shell-model')
+  })
+
+  it('loads model configuration from an ancestor .env for workspace children', async () => {
+    const root = await createTempDir()
+    const workspace = join(root, 'workspace', 'project-a')
+    await mkdir(workspace, { recursive: true })
+    await writeFile(
+      join(root, '.env'),
+      [
+        'CYRENE_BASE_URL=http://127.0.0.1:8080/v1',
+        'CYRENE_MODEL=ancestor-model'
+      ].join('\n')
+    )
+
+    const config = createDefaultConfig(workspace)
+
+    expect(config.model.baseUrl).toBe('http://127.0.0.1:8080/v1')
+    expect(config.model.model).toBe('ancestor-model')
   })
 
   it('does not invent model endpoint defaults', () => {

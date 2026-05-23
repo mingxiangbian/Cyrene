@@ -26,9 +26,34 @@ export async function loadInstructionsIfExists(cwd: string): Promise<string> {
   }
 }
 
-export async function loadSoul(userCyreneDir: string): Promise<string> {
-  const content = await readRegularTextFileIfExists(join(userCyreneDir, 'soul.md'))
-  return content === '' ? '' : `## Global Persona\n\n${content}`
+export async function loadSoul(userCyreneDir: string, cwd?: string): Promise<string> {
+  const sections: string[] = []
+  const globalContent = await readFirstRegularTextFileIfExists([
+    join(userCyreneDir, 'Soul.md'),
+    join(userCyreneDir, 'soul.md')
+  ])
+  if (globalContent !== '') {
+    sections.push(`## Global Persona\n\n${globalContent}`)
+  }
+
+  if (cwd !== undefined) {
+    let cwdRealPath = ''
+    try {
+      cwdRealPath = await realpath(cwd)
+    } catch (error) {
+      if (isMissingFileError(error)) {
+        return sections.join('\n\n')
+      }
+      throw error
+    }
+
+    const projectContent = await readRegularTextFileIfExists(join(cwdRealPath, '.cyrene', 'Soul.md'))
+    if (projectContent !== '') {
+      sections.push(`## Persona: ${cwdRealPath}\n\n${projectContent}`)
+    }
+  }
+
+  return sections.join('\n\n')
 }
 
 export async function loadRuleStack(cwd: string, userCyreneDir: string): Promise<string> {
@@ -233,6 +258,16 @@ async function readRegularTextFileIfExists(filePath: string): Promise<string> {
 
     throw error
   }
+}
+
+async function readFirstRegularTextFileIfExists(filePaths: string[]): Promise<string> {
+  for (const filePath of filePaths) {
+    const content = await readRegularTextFileIfExists(filePath)
+    if (content !== '') {
+      return content
+    }
+  }
+  return ''
 }
 
 function getRuleStackDirectories(cwdRealPath: string, homeRealPath: string): string[] {

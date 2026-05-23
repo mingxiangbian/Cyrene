@@ -1,5 +1,6 @@
+import { readFileSync } from 'node:fs'
 import { homedir } from 'node:os'
-import { join } from 'node:path'
+import { dirname, join, resolve } from 'node:path'
 
 export interface ModelConfig {
   baseUrl: string
@@ -59,19 +60,78 @@ function parsePositiveIntEnv(value: string | undefined, defaultValue: number): n
   return Number.isFinite(parsed) && parsed > 0 ? parsed : defaultValue
 }
 
+function loadDotEnv(cwd: string): Record<string, string> {
+  let currentDir = resolve(cwd)
+  while (true) {
+    try {
+      return parseDotEnv(readFileSync(join(currentDir, '.env'), 'utf8'))
+    } catch (error) {
+      if (!(typeof error === 'object' && error !== null && 'code' in error && error.code === 'ENOENT')) {
+        throw error
+      }
+    }
+
+    const parentDir = dirname(currentDir)
+    if (parentDir === currentDir) {
+      return {}
+    }
+    currentDir = parentDir
+  }
+}
+
+function parseDotEnv(raw: string): Record<string, string> {
+  const values: Record<string, string> = {}
+  for (const line of raw.split(/\r?\n/)) {
+    const trimmed = line.trim()
+    if (trimmed === '' || trimmed.startsWith('#')) {
+      continue
+    }
+
+    const match = /^(?:export\s+)?([A-Za-z_][A-Za-z0-9_]*)=(.*)$/.exec(trimmed)
+    if (match === null) {
+      continue
+    }
+
+    values[match[1]] = unquoteEnvValue(match[2].trim())
+  }
+
+  return values
+}
+
+function unquoteEnvValue(value: string): string {
+  if (
+    (value.startsWith('"') && value.endsWith('"')) ||
+    (value.startsWith("'") && value.endsWith("'"))
+  ) {
+    return value.slice(1, -1)
+  }
+  return value
+}
+
+function envValue(dotEnv: Record<string, string>, name: string): string | undefined {
+  return process.env[name] ?? dotEnv[name]
+}
+
+function optionalEnvValue(dotEnv: Record<string, string>, name: string): string | undefined {
+  const value = envValue(dotEnv, name)
+  return value?.trim() === '' ? undefined : value
+}
+
 export function createDefaultConfig(cwd: string): AppConfig {
+  const dotEnv = loadDotEnv(cwd)
+
   return {
     cwd,
     model: {
-      baseUrl: process.env.CYRENE_BASE_URL ?? '',
-      model: process.env.CYRENE_MODEL ?? '',
-      apiKey: process.env.CYRENE_API_KEY?.trim() === '' ? undefined : process.env.CYRENE_API_KEY,
+      baseUrl: envValue(dotEnv, 'CYRENE_BASE_URL') ?? '',
+      model: envValue(dotEnv, 'CYRENE_MODEL') ?? '',
+      apiKey: optionalEnvValue(dotEnv, 'CYRENE_API_KEY'),
       temperature: 0
     },
     features: {
-      bashEnabled: parseBooleanEnv(process.env.CYRENE_ENABLE_BASH, true),
-      webSearchEnabled: parseBooleanEnv(process.env.CYRENE_ENABLE_WEB_SEARCH, true),
-      mcpEnabled: parseBooleanEnv(process.env.CYRENE_ENABLE_MCP, false)
+      bashEnabled: parseBooleanEnv(envValue(dotEnv, 'CYRENE_ENABLE_BASH'), true),
+      webSearchEnabled: parseBooleanEnv(envValue(dotEnv, 'CYRENE_ENABLE_WEB_SEARCH'), true),
+      mcpEnabled: parseBooleanEnv(envValue(dotEnv, 'CYRENE_ENABLE_MCP'), false)
     },
     maxToolCallsPerTurn: 10,
     contextWindowTokens: 256_000,

@@ -44,14 +44,26 @@ describe('loadSoul', () => {
     await Promise.all(tempDirs.splice(0).map((dir) => rm(dir, { recursive: true, force: true })))
   })
 
-  it('loads only the global soul file', async () => {
+  it('loads global and project Soul.md files', async () => {
     const home = await createTempDir()
     const userCyreneDir = join(home, '.cyrene')
     const project = join(home, 'workspace', 'project')
     await mkdir(join(project, '.cyrene'), { recursive: true })
     await mkdir(userCyreneDir, { recursive: true })
+    await writeFile(join(userCyreneDir, 'Soul.md'), 'Be concise.\n')
+    await writeFile(join(project, '.cyrene', 'Soul.md'), 'Prefer local context.\n')
+    const projectRealPath = await realpath(project)
+
+    await expect(loadSoul(userCyreneDir, project)).resolves.toBe(
+      ['## Global Persona\n\nBe concise.', `## Persona: ${projectRealPath}\n\nPrefer local context.`].join('\n\n')
+    )
+  })
+
+  it('loads legacy lowercase global soul files', async () => {
+    const home = await createTempDir()
+    const userCyreneDir = join(home, '.cyrene')
+    await mkdir(userCyreneDir, { recursive: true })
     await writeFile(join(userCyreneDir, 'soul.md'), 'Be concise.\n')
-    await writeFile(join(project, '.cyrene', 'soul.md'), 'Do not load project persona.\n')
 
     await expect(loadSoul(userCyreneDir)).resolves.toBe('## Global Persona\n\nBe concise.')
   })
@@ -62,7 +74,7 @@ describe('loadSoul', () => {
     await mkdir(userCyreneDir, { recursive: true })
     await expect(loadSoul(userCyreneDir)).resolves.toBe('')
 
-    await writeFile(join(userCyreneDir, 'soul.md'), '\n\n')
+    await writeFile(join(userCyreneDir, 'Soul.md'), '\n\n')
     await expect(loadSoul(userCyreneDir)).resolves.toBe('')
   })
 })
