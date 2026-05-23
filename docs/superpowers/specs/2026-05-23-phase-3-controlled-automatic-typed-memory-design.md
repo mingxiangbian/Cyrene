@@ -55,6 +55,7 @@ Phase 3 覆盖：
 - `MEMORY.md` 由 active typed memory 自动生成，不再手动维护。
 - retrieval 支持按 `query`、`kind`、`scope`、`task` 筛选和排名，只注入 top-K / token budget 内的 active memory。
 - 迁移现有 `MEMORY.md` 和 memory topic files 到 typed store，并保留 legacy evidence。
+- 迁移成功后清理旧 memory 系统残留，包括 `daily.md`、`daily.archive.md`、`sessions/`、legacy topic markdown files 和旧 runtime 写入路径。
 
 ## 非目标
 
@@ -149,7 +150,7 @@ src/memory/
 
 `memory-exporter.ts` 负责从 active store 生成 `MEMORY.md`。
 
-`memory-migration.ts` 负责把 legacy `MEMORY.md` 和 topic markdown 文件迁移成 typed memory。
+`memory-migration.ts` 负责把 legacy `MEMORY.md` 和 topic markdown 文件迁移成 typed memory，并在迁移成功后清理旧文件残留。
 
 `memory-snapshot.ts` 负责创建、列出和恢复 snapshots。
 
@@ -736,8 +737,42 @@ evidence = legacy:<file>
 6. 写入 `index.jsonl`。
 7. 写入 migration events。
 8. 重新生成 `MEMORY.md` projection。
+9. 删除 legacy topic markdown files、`daily.md`、`daily.archive.md` 和 `sessions/`。
+10. 写入 cleanup events。
 
-迁移不删除 legacy topic markdown 文件。后续清理由单独 maintenance task 处理。
+迁移不允许无条件删除整个 `.cyrene/memory/`。必须先生成 snapshot，再迁移旧数据，再清理已经被 typed store 覆盖的旧文件。
+
+迁移完成后的 `.cyrene/memory/` 只保留：
+
+```txt
+index.jsonl
+pending.jsonl
+events.jsonl
+tombstones.jsonl
+MEMORY.md
+snapshots/
+```
+
+`MEMORY.md` 这个文件名继续保留，但它是 generated projection，不是旧 `MEMORY.md` source of truth。
+
+## Legacy runtime cleanup
+
+Phase 3 完成后，旧 memory 系统只允许存在于 migration 和 audit 代码中，不允许存在于 runtime path。
+
+必须移除或改写：
+
+- `maybeAppendDailySummary()` 的 runtime 调用。
+- `compactDailyIfNeeded()` 的 runtime 调用。
+- 旧 `compactMemories()` 直接写 `MEMORY.md` topic file 的路径。
+- `loadDaily()` / `loadDailyRaw()` 进入 system prompt 的路径。
+- `scripts/setup-local-state.mjs` 创建 `daily.md` 的逻辑。
+- 任何从 legacy topic markdown files 加载 prompt memory 的路径。
+
+允许保留：
+
+- `src/memory.ts` 作为兼容 façade，但它必须委托 typed store，不继续实现旧 markdown source-of-truth 行为。
+- migration helpers，用于一次性读取旧文件并写入 typed store。
+- `events.jsonl` 中的 legacy migration / cleanup 审计记录。
 
 ## Daily memory 删除
 
@@ -863,6 +898,9 @@ memoryAutoExtractEnabled: true
 - Web run 使用 record id 作为 evidence runId。
 - REPL 每 turn 使用最新 active memory context。
 - legacy `MEMORY.md` 迁移后生成 `index.jsonl` 和 projection。
+- legacy topic markdown files 迁移后被删除。
+- legacy `sessions/` 迁移/归档后被删除。
+- `src/memory.ts` runtime façade 不再从 legacy markdown files 读取 source-of-truth memory。
 - runtime 不再创建、写入或加载 `daily.md`。
 - 非空 legacy `daily.md` 迁移后 archive/delete，空 `daily.md` 直接删除。
 
@@ -881,6 +919,8 @@ memoryAutoExtractEnabled: true
 [ ] prompt 注入受 top-K/token budget 限制
 [ ] MEMORY.md 由 index.jsonl 自动生成
 [ ] legacy MEMORY.md 可迁移到 typed store
+[ ] legacy topic markdown files、daily files 和 sessions/ 迁移后清理干净
+[ ] runtime 不再保留旧 markdown memory source-of-truth 路径
 [ ] CLI/Web/REPL run 后都能 best-effort 自动处理 memory candidates
 [ ] daily.md 不再创建、写入或注入 prompt
 [ ] npm test 通过
