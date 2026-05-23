@@ -10,6 +10,7 @@ dist/
 coverage/
 .worktrees/
 .superpowers/
+.codegraph/
 .jarvis/
 data/
 workspace/
