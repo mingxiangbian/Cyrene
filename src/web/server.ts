@@ -6,6 +6,7 @@ import { dirname, extname, join, normalize, resolve, sep } from 'node:path'
 import { randomUUID } from 'node:crypto'
 import { fileURLToPath } from 'node:url'
 import { runAgentLoop } from '../agent-loop.js'
+import { persistContinuitySnapshot } from '../affect/affect-runtime.js'
 import { callModel as defaultCallModel, type CallModelInput, type ChatMessage, type ChatRole, type ModelResponse } from '../llm-client.js'
 import { contextInfoForRoute } from '../models/provider-router.js'
 import type { ModelContextInfo, ThinkingMode } from '../models/types.js'
@@ -358,6 +359,8 @@ async function runWebAgent(
       memoryQuery: record.userMessage.content,
       memoryTask: 'conversation'
     })
+    emit(record, { type: 'continuity', snapshot: runtime.continuitySnapshot })
+    await persistContinuitySnapshot(record.memoryCwd, runtime.continuitySnapshot).catch(() => {})
     modelMessages = [{ role: 'system', content: runtime.systemPrompt }, ...record.messages]
     const persistedStartIndex = modelMessages.length
     currentTurnStartIndex = Math.max(1, modelMessages.length - 1)

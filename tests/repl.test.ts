@@ -94,12 +94,15 @@ describe('runReplTurn', () => {
 
     expect(result).toEqual({ kind: 'agent', finalText: 'hello back', toolCallCount: 0 })
     expect(callModel).toHaveBeenCalledTimes(1)
-    expect(seenMessages[0]).toEqual([
-      { role: 'system', content: 'system rules' },
+    expect(seenMessages[0]?.[0]?.role).toBe('system')
+    expect(seenMessages[0]?.[0]?.content).toContain('system rules')
+    expect(seenMessages[0]?.[0]?.content).toContain('## Continuity Response Policy')
+    expect(seenMessages[0]?.slice(1)).toEqual([
       { role: 'user', content: 'hello' }
     ])
-    expect(messages).toEqual([
-      { role: 'system', content: 'system rules' },
+    expect(messages[0]?.role).toBe('system')
+    expect(messages[0]?.content).toContain('## Continuity Response Policy')
+    expect(messages.slice(1)).toEqual([
       { role: 'user', content: 'hello' },
       { role: 'assistant', content: 'hello back' }
     ])
@@ -113,8 +116,10 @@ describe('runReplTurn', () => {
     })
 
     expect(secondResult).toEqual({ kind: 'agent', finalText: 'second answer', toolCallCount: 0 })
-    expect(seenMessages[1]).toEqual([
-      { role: 'system', content: 'system rules' },
+    expect(seenMessages[1]?.[0]?.role).toBe('system')
+    expect(seenMessages[1]?.[0]?.content.match(/## Continuity Response Policy/g)).toHaveLength(1)
+    expect(seenMessages[1]?.[0]?.content).toContain('Response need:')
+    expect(seenMessages[1]?.slice(1)).toEqual([
       { role: 'user', content: 'hello' },
       { role: 'assistant', content: 'hello back' },
       { role: 'user', content: 'again' }
@@ -455,8 +460,10 @@ describe('runRepl', () => {
       consoleLog.mockRestore()
     }
 
-    expect(seenMessages[0]).toEqual([
-      { role: 'system', content: 'system rules' },
+    expect(seenMessages[0]?.[0]?.role).toBe('system')
+    expect(seenMessages[0]?.[0]?.content).toContain('system rules')
+    expect(seenMessages[0]?.[0]?.content).toContain('## Continuity Response Policy')
+    expect(seenMessages[0]?.slice(1)).toEqual([
       { role: 'user', content: 'first question' },
       { role: 'assistant', content: 'first answer' },
       { role: 'user', content: 'next question' }

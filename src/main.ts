@@ -2,6 +2,7 @@
 import { Command } from 'commander'
 import { join } from 'node:path'
 import { runAgentLoop } from './agent-loop.js'
+import { persistContinuitySnapshot } from './affect/affect-runtime.js'
 import { createDefaultConfig } from './config.js'
 import { formatConfigDoctor } from './config-doctor.js'
 import { buildInitialMessages } from './context.js'
@@ -86,7 +87,7 @@ async function main(): Promise<void> {
     process.exit(1)
   }
 
-  const { config, systemPrompt, tools } = await buildAgentRuntime(options.cwd, new Date(), {
+  const { config, systemPrompt, tools, continuitySnapshot } = await buildAgentRuntime(options.cwd, new Date(), {
     memoryCwd: launchCwd,
     memoryQuery: prompt,
     memoryTask: prompt ? 'coding' : 'conversation'
@@ -103,6 +104,8 @@ async function main(): Promise<void> {
     await runRepl({ config, systemPrompt, tools, resumeSessionId: options.resume })
     return
   }
+
+  await persistContinuitySnapshot(config.memoryCwd, continuitySnapshot).catch(() => {})
 
   const observer = createTerminalObserver(process.stderr, { spinner: false, responseDivider: false })
   const messages = buildInitialMessages(systemPrompt, prompt)

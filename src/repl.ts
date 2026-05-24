@@ -2,8 +2,15 @@ import { stderr, stdin as input, stdout as output } from 'node:process'
 import { createInterface } from 'node:readline/promises'
 import chalk from 'chalk'
 import { runAgentLoop } from './agent-loop.js'
+import {
+  buildContinuitySnapshot,
+  formatContinuityPolicy,
+  persistContinuitySnapshot,
+  replaceContinuityPolicy
+} from './affect/affect-runtime.js'
 import type { AppConfig } from './config.js'
 import { callModel as defaultCallModel, type CallModelInput, type ChatMessage, type ModelResponse } from './llm-client.js'
+import { retrieveMemories } from './memory/memory-retriever.js'
 import { contextInfoForRoute } from './models/provider-router.js'
 import { appendSessionEvent, createSession, loadSession } from './session-store.js'
 import type { Tool, ToolContext } from './tools/types.js'
@@ -64,6 +71,7 @@ export async function runReplTurn(input: RunReplTurnInput): Promise<RunReplTurnR
     }
   }
 
+  await refreshContinuityPolicy(input, text)
   const userMessage: { role: 'user'; content: string } = { role: 'user', content: text }
   input.messages.push(userMessage)
   const turnStartIndex = input.messages.length - 1
@@ -208,6 +216,35 @@ export async function runRepl(inputConfig: {
   } finally {
     rl.close()
   }
+}
+
+async function refreshContinuityPolicy(input: RunReplTurnInput, text: string): Promise<void> {
+  const memories = await retrieveMemories({
+    cwd: input.config.memoryCwd,
+    userCyreneDir: input.config.userCyreneDir,
+    query: text,
+    task: 'conversation',
+    maxItems: 8,
+    maxTokens: 1200
+  })
+  const snapshot = await buildContinuitySnapshot({
+    config: input.config,
+    userMessage: text,
+    task: 'conversation',
+    memories: memories.map(({ memory }) => memory)
+  })
+  const policy = formatContinuityPolicy(snapshot)
+  await persistContinuitySnapshot(input.config.memoryCwd, snapshot).catch(() => {})
+
+  if (input.messages[0]?.role === 'system') {
+    input.messages[0] = {
+      ...input.messages[0],
+      content: replaceContinuityPolicy(input.messages[0].content, policy)
+    }
+    return
+  }
+
+  input.messages.unshift({ role: 'system', content: policy })
 }
 
 function isExitInput(input: string): boolean {

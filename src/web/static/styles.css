@@ -993,17 +993,16 @@ button:disabled {
 }
 
 .tabs {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  display: flex;
   gap: 8px;
+  overflow-x: auto;
   padding: 14px;
 }
 
 .tab {
-  min-width: 0;
+  flex: 0 0 auto;
+  min-width: max-content;
   padding: 0 10px;
-  overflow: hidden;
-  text-overflow: ellipsis;
 }
 
 .tab.is-active {
@@ -1023,6 +1022,53 @@ button:disabled {
   display: grid;
   gap: 12px;
   min-width: 0;
+}
+
+.continuity-panel {
+  display: grid;
+  gap: 12px;
+  min-width: 0;
+}
+
+.continuity-section {
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+  padding: 12px;
+  border: 1px solid rgba(117, 139, 166, 0.2);
+  border-radius: var(--radius-sm);
+  background: rgba(255, 255, 255, 0.58);
+}
+
+.continuity-section h3 {
+  margin: 0;
+  color: var(--ink);
+  font-size: 13px;
+  line-height: 1.25;
+}
+
+.continuity-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 10px;
+  align-items: start;
+  min-width: 0;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.35;
+}
+
+.continuity-label,
+.continuity-value {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.continuity-value {
+  max-width: 150px;
+  color: var(--ink);
+  font-weight: 700;
+  text-align: right;
 }
 
 .markdown-file-select {
