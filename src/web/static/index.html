@@ -70,8 +70,9 @@
 
         <section id="messages" class="messages" aria-live="polite" aria-label="Messages">
           <div class="empty-state">
-            <div class="empty-orbit" aria-hidden="true"></div>
-            <p class="eyebrow">Ready</p>
+            <div class="empty-avatar" aria-hidden="true">
+              <img class="empty-avatar-image" src="/static/assets/cyrene-cartoon-avatar.png" alt="" decoding="async">
+            </div>
             <h3>Ask Cyrene to work through a local task.</h3>
             <p>Run status and tool activity will stream here as the agent responds.</p>
           </div>
@@ -80,7 +81,7 @@
         <form id="composer" class="composer" aria-label="Send message">
           <textarea id="promptInput" name="prompt" rows="1" aria-label="Message"></textarea>
           <div id="thinkModeControl" class="think-mode-control" aria-label="Think mode">
-            <button id="thinkModeButton" class="think-mode-button" type="button" aria-haspopup="menu" aria-expanded="false">Think: Auto</button>
+            <button id="thinkModeButton" class="think-mode-button" type="button" aria-haspopup="menu" aria-expanded="false">Auto</button>
             <div id="thinkModeMenu" class="think-mode-menu" role="menu" hidden>
               <button class="think-mode-option is-active" type="button" role="menuitemradio" data-thinking-mode="auto" aria-checked="true">Auto</button>
               <button class="think-mode-option" type="button" role="menuitemradio" data-thinking-mode="on" aria-checked="false">On</button>
@@ -92,7 +93,7 @@
               <span id="contextUsageValue" class="context-usage-value">0%</span>
             </span>
           </button>
-          <button id="sendButton" class="send-button" type="submit">Send</button>
+          <button id="sendButton" class="send-button" type="submit" aria-label="Send message" title="Send message"><span class="send-button-icon" aria-hidden="true">↑</span></button>
         </form>
       </section>
 

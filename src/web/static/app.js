@@ -1010,8 +1010,7 @@ function renderEmptyState() {
   const node = document.createElement('div')
   node.className = 'empty-state'
   node.innerHTML = [
-    '<div class="empty-orbit" aria-hidden="true"></div>',
-    '<p class="eyebrow">Ready</p>',
+    '<div class="empty-avatar" aria-hidden="true"><img class="empty-avatar-image" src="/static/assets/cyrene-cartoon-avatar.png" alt="" decoding="async"></div>',
     '<h3>Ask Cyrene to work through a local task.</h3>',
     '<p>Run status and tool activity will stream here as the agent responds.</p>'
   ].join('')
@@ -1332,16 +1331,28 @@ function renderNote(text) {
   return note
 }
 
+function renderSendButton(isSending) {
+  if (!sendButton) {
+    return
+  }
+  sendButton.disabled = false
+  sendButton.replaceChildren()
+  const icon = document.createElement('span')
+  icon.className = 'send-button-icon'
+  icon.setAttribute('aria-hidden', 'true')
+  icon.textContent = isSending ? '■' : '↑'
+  sendButton.append(icon)
+  const label = isSending ? 'Cancel run and restore prompt' : 'Send message'
+  sendButton.setAttribute('aria-label', label)
+  sendButton.setAttribute('title', label)
+}
+
 function setSending(isSending) {
   state.isSending = isSending
   if (isSending) {
     closeSessionMenu(false)
   }
-  if (sendButton) {
-    sendButton.disabled = false
-    sendButton.textContent = isSending ? 'Stop' : 'Send'
-    sendButton.setAttribute('aria-label', isSending ? 'Cancel run and restore prompt' : 'Send message')
-  }
+  renderSendButton(isSending)
   if (promptInput) {
     promptInput.disabled = isSending
   }

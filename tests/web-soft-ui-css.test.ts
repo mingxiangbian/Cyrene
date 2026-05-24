@@ -23,6 +23,8 @@ describe('Phase 8A soft UI shell CSS contract', () => {
 
   it('makes high-frequency controls tactile without increasing the accent footprint', () => {
     expect(css).toMatch(/\.send-button\s*\{[\s\S]*?background:\s*linear-gradient\([^;]*var\(--accent-primary\)/)
+    expect(css).toMatch(/\.send-button\s*\{[\s\S]*?width:\s*44px;/)
+    expect(css).toMatch(/\.send-button-icon\s*\{[\s\S]*?font-size:\s*18px;/)
     expect(css).toMatch(/\.composer\s*\{[\s\S]*?box-shadow:\s*var\(--surface-inset\),\s*var\(--soft-highlight\);/)
     expect(css).toMatch(/\.context-usage-button\s*\{[\s\S]*?box-shadow:\s*var\(--surface-raised-subtle\);/)
     expect(css).toMatch(/\.icon-button:active,\s*\n\.send-button:active,\s*\n\.tab:active[\s\S]*?box-shadow:\s*var\(--surface-pressed\);/)
@@ -37,9 +39,9 @@ describe('Phase 8A soft UI shell CSS contract', () => {
 
   it('adds state-aware ambient motion with a reduced-motion escape hatch', () => {
     expect(css).toMatch(/\.ambient\s*\{[\s\S]*?animation:\s*ambientDrift/)
-    expect(css).toMatch(/\.app-shell\.run-active\s+\.empty-orbit\s*\{[\s\S]*?animation:\s*emptyOrbitGlow/)
+    expect(css).toMatch(/\.app-shell\.run-active\s+\.empty-avatar\s*\{[\s\S]*?animation:\s*emptyAvatarGlow/)
     expect(css).toMatch(/@keyframes ambientDrift/)
-    expect(css).toMatch(/@keyframes emptyOrbitGlow/)
+    expect(css).toMatch(/@keyframes emptyAvatarGlow/)
     expect(css).toMatch(/@media\s*\(prefers-reduced-motion:\s*reduce\)\s*\{[\s\S]*?animation:\s*none\s*!important;/)
   })
 })
