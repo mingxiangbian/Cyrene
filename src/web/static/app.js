@@ -64,6 +64,7 @@ const state = {
   workspaceError: null,
   markdownError: null,
   tools: [],
+  continuity: null,
   resizingLeft: false,
   inspectorTab: 'tools',
   sidebarCollapsed: false,
@@ -165,6 +166,7 @@ function resetChat() {
   closeSessionMenu(false)
   state.messages = []
   state.tools = []
+  state.continuity = null
   state.contextUsageDetailsVisible = false
   updateChatTitle('Untitled session')
   updateRunStatus('Ready')
@@ -233,6 +235,8 @@ async function sendPrompt() {
   }
   updateChatLayoutState()
   setSending(true)
+  state.continuity = null
+  renderInspector()
   updateRunStatus('Starting run...')
 
   let response
@@ -284,6 +288,10 @@ async function sendPrompt() {
 
 function handleRunEvent(event, stream) {
   switch (event.type) {
+    case 'continuity':
+      state.continuity = event.snapshot || null
+      renderInspector()
+      break
     case 'thinking_start':
       updateModelContext(event.modelContext)
       updateRunStatus(formatThinkingStatus(event.modelContext || state.modelContext))
@@ -615,6 +623,7 @@ async function loadSession(sessionId) {
   state.contextUsageDetailsVisible = false
   updateChatLayoutState()
   state.tools = []
+  state.continuity = null
   updateChatTitle(body.session.title || 'Untitled session')
   updateRunStatus('Ready')
   renderMessages()
@@ -1064,8 +1073,8 @@ function renderInspector() {
     return
   }
 
-  if (state.inspectorTab === 'memory') {
-    inspectorContent.replaceChildren(renderNote('Memory is not persisted in this web session.'))
+  if (state.inspectorTab === 'continuity') {
+    inspectorContent.replaceChildren(renderContinuityPanel())
     return
   }
 
@@ -1112,6 +1121,66 @@ function renderMarkdownPreview(markdown) {
   preview.className = 'markdown-preview'
   preview.innerHTML = renderMarkdownHtml(markdown, { workspaceId: state.workspaceId })
   return preview
+}
+
+function renderContinuityPanel() {
+  if (!state.continuity) {
+    return renderNote('Continuity will appear after a run starts.')
+  }
+
+  const panel = document.createElement('div')
+  panel.className = 'continuity-panel'
+  panel.append(
+    renderContinuitySection('memory', [
+      ['Relevant memory', String(state.continuity.relevantMemoryCount ?? 0)]
+    ]),
+    renderContinuitySection('affect', [
+      ['Labels', formatList(state.continuity.affect?.labels)],
+      ['Need', state.continuity.affect?.responseNeed || 'normal'],
+      ['Risk', state.continuity.affect?.risk || 'low']
+    ]),
+    renderContinuitySection('relationship', [
+      ['Preference', state.continuity.relationship?.communicationPreference || 'structured'],
+      ['Boundary', state.continuity.relationship?.boundarySensitivity || 'normal']
+    ]),
+    renderContinuitySection('strategy', [
+      ['Tone', state.continuity.strategy?.tone || 'direct'],
+      ['Verbosity', state.continuity.strategy?.verbosity || 'medium'],
+      ['Challenge', state.continuity.strategy?.shouldChallengeUser ? 'yes' : 'no']
+    ])
+  )
+  return panel
+}
+
+function renderContinuitySection(title, rows) {
+  const section = document.createElement('section')
+  section.className = 'continuity-section'
+
+  const heading = document.createElement('h3')
+  heading.textContent = title
+  section.append(heading)
+
+  for (const [label, value] of rows) {
+    const row = document.createElement('div')
+    row.className = 'continuity-row'
+
+    const labelNode = document.createElement('span')
+    labelNode.className = 'continuity-label'
+    labelNode.textContent = label
+
+    const valueNode = document.createElement('span')
+    valueNode.className = 'continuity-value'
+    valueNode.textContent = value
+
+    row.append(labelNode, valueNode)
+    section.append(row)
+  }
+
+  return section
+}
+
+function formatList(value) {
+  return Array.isArray(value) && value.length > 0 ? value.join(', ') : 'neutral'
 }
 
 function renderTool(tool) {

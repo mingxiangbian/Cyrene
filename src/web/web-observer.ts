@@ -1,7 +1,9 @@
 import type { AgentObserver } from '../ui-observer.js'
+import type { ContinuitySnapshot } from '../affect/types.js'
 import type { ModelContextInfo } from '../models/types.js'
 
 export type WebRunEvent =
+  | { type: 'continuity'; snapshot: ContinuitySnapshot }
   | { type: 'thinking_start'; modelContext?: ModelContextInfo }
   | { type: 'thinking_stop'; durationMs: number }
   | { type: 'tool_start'; name: string; summary: string }

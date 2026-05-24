@@ -76,7 +76,8 @@ describe('buildAgentRuntime', () => {
       'Workspace rule.',
       'Project rule.',
       '## Project Instructions\n\nUse TDD.',
-      '## Relevant Memory\n- Prefer small patches.'
+      '## Relevant Memory\n- Prefer small patches.',
+      '## Continuity Response Policy'
     ]
     let lastIndex = -1
     for (const expected of expectedOrder) {
@@ -89,6 +90,8 @@ describe('buildAgentRuntime', () => {
       expect.arrayContaining(['file_read', 'file_write', 'file_edit', 'grep', 'glob', 'bash', 'ask_user'])
     )
     expect(runtime.tools.map((tool) => tool.name)).not.toContain('generate_image')
+    expect(runtime.systemPrompt).toContain('Avoid claiming subjective emotion.')
+    expect(runtime.continuitySnapshot?.strategy.shouldAvoidAnthropomorphism).toBe(true)
   })
 
   it('uses feature flags when building runtime tools', async () => {

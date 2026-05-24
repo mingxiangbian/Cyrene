@@ -3,6 +3,9 @@ import { dirname, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import type { AppConfig } from '../config.js'
 import { createDefaultConfig } from '../config.js'
+import { buildContinuitySnapshot, formatContinuityPolicy } from '../affect/affect-runtime.js'
+import type { ContinuitySnapshot } from '../affect/types.js'
+import type { CallModelInput, ModelResponse } from '../llm-client.js'
 import { contextInfoForRoute } from '../models/provider-router.js'
 import type { ThinkingMode } from '../models/types.js'
 import { formatMemoryContext, retrieveMemories } from '../memory/memory-retriever.js'
@@ -19,6 +22,7 @@ export interface AgentRuntime {
   config: AppConfig
   systemPrompt: string
   tools: Tool<unknown>[]
+  continuitySnapshot: ContinuitySnapshot
 }
 
 export interface AgentRuntimeOverrides {
@@ -26,6 +30,7 @@ export interface AgentRuntimeOverrides {
   memoryCwd?: string
   memoryQuery?: string
   memoryTask?: 'coding' | 'planning' | 'conversation' | 'memory' | 'debugging'
+  callModel?: (input: CallModelInput) => Promise<ModelResponse>
 }
 
 export async function buildAgentRuntime(
@@ -51,6 +56,15 @@ export async function buildAgentRuntime(
     maxTokens: 1200
   })
   const memoryContext = formatMemoryContext(memories)
+  const continuitySnapshot = await buildContinuitySnapshot({
+    config,
+    userMessage: overrides.memoryQuery ?? '',
+    task: overrides.memoryTask ?? 'memory',
+    memories: memories.map(({ memory }) => memory),
+    generatedAt: currentDate.toISOString(),
+    callModel: overrides.callModel
+  })
+  const continuityPolicy = formatContinuityPolicy(continuitySnapshot)
   const systemPrompt = [
     baseSystemPrompt.trimEnd(),
     `# currentDate\nToday's date is ${currentDateText}.`,
@@ -58,7 +72,8 @@ export async function buildAgentRuntime(
     persona,
     rules,
     projectInstructions,
-    memoryContext
+    memoryContext,
+    continuityPolicy
   ]
     .filter(Boolean)
     .join('\n\n')
@@ -66,7 +81,8 @@ export async function buildAgentRuntime(
   return {
     config,
     systemPrompt,
-    tools: createCoreTools(config)
+    tools: createCoreTools(config),
+    continuitySnapshot
   }
 }
 
