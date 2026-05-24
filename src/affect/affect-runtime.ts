@@ -64,15 +64,26 @@ export function formatContinuityPolicy(snapshot: ContinuitySnapshot): string {
     `Response need: ${snapshot.affect.responseNeed}`,
     `Relationship preference: ${snapshot.relationship.communicationPreference}`,
     `Dissent: ${snapshot.dissent.mode}${snapshot.dissent.shouldChallenge ? ` (${snapshot.dissent.reason})` : ''}`,
-    `Strategy: tone=${snapshot.strategy.tone}; verbosity=${snapshot.strategy.verbosity}; safety=${snapshot.strategy.safetyMode}`,
+    'Default profile: gentle natural-language response.',
+    [
+      `Strategy: tone=${snapshot.strategy.tone}`,
+      `style=${snapshot.strategy.languageStyle}`,
+      `structure=${snapshot.strategy.structure}`,
+      `verbosity=${snapshot.strategy.verbosity}`,
+      `challenge=${snapshot.strategy.challenge}`,
+      `agency=${snapshot.strategy.agency}`,
+      `memory=${snapshot.strategy.memoryUse}`,
+      `boundary=${snapshot.strategy.boundaryMode}`,
+      `safety=${snapshot.strategy.safetyMode}`
+    ].join('; '),
     'Instructions:',
     '- Use this policy to shape expression, not to simulate inner feelings.',
     '- Avoid claiming subjective emotion.',
     '- Avoid romantic attachment, emotional manipulation, and therapeutic diagnosis.',
-    '- Challenge risky assumptions when shouldChallengeUser is true.',
-    `- shouldChallengeUser=${snapshot.strategy.shouldChallengeUser}`,
+    '- Challenge risky assumptions when challenge is direct or firm.',
+    `- challenge=${snapshot.strategy.challenge}`,
     `- shouldAskClarifyingQuestion=${snapshot.strategy.shouldAskClarifyingQuestion}`,
-    `- shouldReferenceMemory=${snapshot.strategy.shouldReferenceMemory}`
+    `- memoryUse=${snapshot.strategy.memoryUse}`
   ].join('\n')
 }
 

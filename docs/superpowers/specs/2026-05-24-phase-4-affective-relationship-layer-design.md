@@ -54,7 +54,7 @@ Phase 4 覆盖：
 - 新增 `PrincipledDissentPolicy`，让 Cyrene 可以基于事实、安全、架构风险、隐私、长期目标和用户已确认偏好反驳用户。
 - 新增 `ResponseStrategy`，综合 persona contract、affect state、relationship state、synthetic affect、dissent policy 和 task context，生成 compact policy hint。
 - `ResponseStrategy` 直接参与 Web、CLI one-shot 和 REPL 的回答生成。
-- Web UI 右栏把原 memory 区域升级为 `continuity`，在 memory 下展示 affect、relationship 和 response strategy。
+- Web UI 右栏把原 memory 区域升级为 `Continuity`，在 memory 下展示 affect、relationship 和 response strategy；内部事件和数据 key 仍可使用 `continuity`。
 - 所有 affect 机制都保持可解释、可纠正、不过度拟人。
 
 ## 非目标
@@ -87,6 +87,275 @@ Phase 4 明确不做：
 11. affect 结果不能反向污染 Phase 3 memory；后续若要写 memory，必须走 Phase 3 validator。
 12. 所有持久化路径必须留在 `.cyrene/` 下，拒绝路径穿越和 symlink 写入。
 
+## State Taxonomy v1
+
+Phase 4 的状态不表示 Cyrene 的内心，也不表示对用户的心理诊断。它只表示：
+
+```txt
+当前互动需要 Cyrene 用什么理解方式、关系姿态和回应策略。
+```
+
+第一版状态体系分四层：
+
+```txt
+Turn State
+  当前这一轮用户输入带来的短期状态。
+  生命周期：只影响当前回复，默认不写入 Phase 3 memory。
+
+Continuity State
+  从 Phase 3 memory 和近期交互推导出来的长期互动基线。
+  生命周期：可以跨 run 保留，但必须可解释、可纠正、可衰减。
+
+Contract State
+  AffectivePersonaContract 定义的 Cyrene 稳定表达契约。
+  生命周期：不随普通对话自动更新，只能显式版本化修改。
+
+Response Strategy
+  由 Turn State、Continuity State、Contract State、task context 和 dissent policy 编译出来。
+  生命周期：派生结果，只用于当前回复和 debug snapshot。
+```
+
+### Turn State: labels
+
+第一版允许这些 `AffectLabel`：
+
+```ts
+export type AffectLabel =
+  | 'neutral'
+  | 'focused'
+  | 'high_focus'
+  | 'confused'
+  | 'uncertain'
+  | 'distressed'
+  | 'frustrated'
+  | 'angry'
+  | 'urgent'
+  | 'reflective'
+```
+
+标签语义：
+
+| label | 语义 | 回应要求 |
+| --- | --- | --- |
+| `neutral` | 没有明显 affect signal。 | 使用 persona baseline。 |
+| `focused` | 用户在推进任务、代码、测试、执行。 | 少铺垫，给技术判断和下一步。 |
+| `high_focus` | 用户明确要求高效、直接、少废话。 | 低 verbosity，先给结论。 |
+| `confused` | 用户没理解、需要解释或拆解。 | 简化结构，降低歧义。 |
+| `uncertain` | 用户不是不懂，而是在多个选项间没把握。 | 给权衡、推荐和判断依据。 |
+| `distressed` | 用户压力高、认知负担高或表达出撑不住。 | 降低认知负担，少给分叉，先给可执行第一步。 |
+| `frustrated` | 用户遇到阻力、失败、卡住或反复不对。 | 诊断问题，避免空泛安慰。 |
+| `angry` | 用户有明显不满、烦躁或攻击性语气。 | 降温、澄清、保持边界，不反击。 |
+| `urgent` | 用户明确要求马上处理或存在时间压力。 | 压缩回答，优先行动路径。 |
+| `reflective` | 用户在做架构、命名、人格、路线或产品判断。 | 给框架、原则、取舍和推荐。 |
+
+暂不把 `playful` 做成一类用户状态。轻松感由 `SyntheticAffectState.playfulness` 调节，并且必须受 persona contract 和当前任务约束，避免人格漂移。
+
+### Turn State: response needs
+
+`ResponseNeed` 是 labels 编译后的直接策略需求。第一版使用：
+
+```ts
+export type ResponseNeed =
+  | 'normal'
+  | 'lower_cognitive_load'
+  | 'simplify_and_structure'
+  | 'deescalate_and_clarify'
+  | 'technical_directness'
+  | 'concise_execution'
+  | 'structured_tradeoff'
+```
+
+映射规则：
+
+```txt
+distressed
+  -> lower_cognitive_load
+
+angry / frustrated
+  -> deescalate_and_clarify
+
+confused
+  -> simplify_and_structure
+
+high_focus / urgent
+  -> concise_execution
+
+focused
+  -> technical_directness
+
+uncertain / reflective
+  -> structured_tradeoff
+
+neutral
+  -> normal
+```
+
+优先级从上到下。也就是说，如果用户既 `distressed` 又 `focused`，优先降低认知负担，而不是把回复写成高密度技术判断。
+
+### Continuity State
+
+`Continuity State` 不保存“用户是什么样的人”，只保存可审计的互动基线：
+
+```ts
+export interface ContinuityState {
+  communicationPreference: 'direct' | 'gentle' | 'concise' | 'structured'
+  agencyPreference: 'ask_first' | 'recommend' | 'execute_when_clear'
+  boundarySensitivity: 'normal' | 'careful'
+  familiarity: number
+  trust: number
+  unresolvedFriction: boolean
+  memoryBasis: 'none' | 'weak' | 'confirmed'
+  evidenceMemoryIds: string[]
+}
+```
+
+语义：
+
+```txt
+communicationPreference
+  用户长期偏好的沟通形态。它是默认值，不能覆盖用户当前显式要求。
+
+agencyPreference
+  Cyrene 应该多问、给推荐，还是在条件明确时直接执行。
+
+boundarySensitivity
+  是否需要更谨慎地处理关系、拟人、心理、依赖或安全边界。
+
+familiarity / trust
+  关系连续性强度，不等于亲密关系，也不允许制造依赖。
+
+unresolvedFriction
+  最近是否存在未解决冲突、误解或反复纠正。
+
+memoryBasis
+  这个 Continuity 判断有多少来自已确认 memory。
+
+evidenceMemoryIds
+  指向 Phase 3 memory 中的来源记录。Continuity State 不复制 memory 原文。
+```
+
+### Task State
+
+第一版不要把所有事情塞进 affect。另设轻量 `TaskState`：
+
+```ts
+export interface TaskState {
+  mode:
+    | 'conversation'
+    | 'planning'
+    | 'implementation'
+    | 'debugging'
+    | 'review'
+    | 'decision'
+  stakes: 'low' | 'medium' | 'high'
+  urgency: 'normal' | 'high'
+  desiredAgency: 'ask_first' | 'recommend' | 'execute'
+}
+```
+
+`TaskState` 用于修正 affect。比如用户说“直接做”，但任务是高风险删除数据，`desiredAgency` 仍不能绕过确认和安全 gate。
+
+### Response Strategy
+
+`ResponseStrategy` 是最终给 agent 的 compact policy，不是长期状态：
+
+```ts
+export interface ResponseStrategy {
+  tone: 'direct' | 'gentle' | 'technical' | 'supportive' | 'firm'
+  languageStyle: 'natural_language' | 'technical_compact' | 'formal_report'
+  structure: 'brief' | 'stepwise' | 'diagnostic' | 'decision' | 'tradeoff'
+  verbosity: 'low' | 'medium' | 'high'
+  challenge: 'none' | 'soft' | 'direct' | 'firm'
+  agency: 'ask' | 'recommend' | 'execute'
+  memoryUse: 'none' | 'light' | 'explicit'
+  boundaryMode: 'normal' | 'careful' | 'firm'
+  safetyMode: 'normal' | 'careful' | 'refuse' | 'escalate'
+}
+```
+
+### Default Response Strategy Profile
+
+如果用户当前轮没有特别设定 strategy，Cyrene 必须从默认 profile 开始，再由 affect、relationship、task、dissent 和 safety 覆盖。
+
+你的默认 profile 是：
+
+```ts
+export const defaultResponseStrategyProfile: ResponseStrategy = {
+  tone: 'gentle',
+  languageStyle: 'natural_language',
+  structure: 'stepwise',
+  verbosity: 'medium',
+  challenge: 'soft',
+  agency: 'recommend',
+  memoryUse: 'light',
+  boundaryMode: 'normal',
+  safetyMode: 'normal'
+}
+```
+
+语义：
+
+```txt
+gentle
+  默认温和，但不是讨好；必要时仍然给明确判断。
+
+natural_language
+  使用自然语言，不把普通对话写成配置表、诊断单或机械策略说明。
+
+medium verbosity
+  简洁但保留必要细节。不是一句话打发，也不是长篇解释。
+
+soft challenge
+  有事实错误、架构风险、安全风险、长期目标冲突或明显逻辑问题时反驳。
+  默认不为了显得聪明而找茬。
+
+recommend agency
+  适当给建议和推荐；任务明确且安全时可以推进，风险高时先确认。
+
+light memory
+  默认使用相关 memory 影响判断，但不频繁显式说“我记得你...”。
+
+normal boundary
+  始终保持 persona contract 边界；遇到依赖、心理、隐私、安全或过度拟人风险时升级。
+```
+
+编译优先级：
+
+```txt
+1. safety / permission / tool gate
+2. persona contract boundaries
+3. explicit user instruction in current turn
+4. task state and stakes
+5. affect responseNeed
+6. principled dissent policy
+7. Continuity defaults from memory
+8. synthetic affect expression tuning
+```
+
+覆盖规则：
+
+```txt
+default profile
+  -> 被当前用户显式要求覆盖
+  -> 被 high-confidence affect 覆盖
+  -> 被 safety / boundary / permission 强制升级
+  -> 被 relationship memory 轻量调整
+
+如果 affect confidence 低，回退到 default profile。
+如果 relationship 和当前用户显式要求冲突，当前用户显式要求优先。
+如果用户要求与安全或边界冲突，安全和边界优先。
+```
+
+### 组合样例
+
+| 用户输入形态 | Turn State | Response Strategy |
+| --- | --- | --- |
+| “我现在有点崩，不知道下一步怎么做” | `distressed`, `confused` | `supportive`, `stepwise`, `low`, challenge `none` |
+| “我没看懂，帮我拆一下” | `confused` | `gentle`, `stepwise`, `medium`, ask only if necessary |
+| “这个方案风险挺高，直接说哪里不成立，别废话” | `focused`, `high_focus`, dissent trigger | `direct`, `decision`, `low`, challenge `direct` |
+| “这个测试又失败了，我有点烦，哪里错了” | `angry`, `frustrated`, `focused` | `gentle`, `diagnostic`, `medium`, challenge `soft/direct` by evidence |
+| “帮我设定这些状态，我再检查” | `reflective`, `decision` task | `direct`, `tradeoff`, `medium`, agency `recommend` |
+
 ## Phase 3 和 Phase 4 的关系
 
 Phase 3 回答：
@@ -117,6 +386,45 @@ Affective Persona Contract:
 ```
 
 Phase 4 可以读取 Phase 3 memory。Phase 4 不能直接写 Phase 3 active memory，也不能让 `AffectivePersonaContract` 像普通 memory 一样自动漂移。
+
+### Memory 和 Relationship 的边界
+
+为了避免同一信息在 memory 和 relationship 中重复记录，Phase 4 采用单一事实来源规则：
+
+```txt
+Memory = source of truth
+Relationship = derived state
+Strategy = ephemeral output
+```
+
+具体分工：
+
+```txt
+Phase 3 Memory
+  保存用户明确确认过的长期事实、偏好、边界和项目规则。
+  可以保存自然语言原文或摘要。
+  示例：“用户说以后架构问题可以直接反驳。”
+
+RelationshipState
+  只保存从 memory 推导出的枚举、数值、布尔值和 memory id 引用。
+  不能复制完整偏好文本。
+  示例：communicationPreference='direct', evidenceMemoryIds=['mem_123']。
+
+ResponseStrategy
+  每轮临时编译，不作为长期记录。
+  可以写入 trace/debug snapshot，但不能成为 Phase 3 memory 的事实来源。
+```
+
+去冗余规则：
+
+```txt
+1. 如果信息是用户确认过的长期偏好，写入 Phase 3 memory。
+2. 如果信息只是对长期偏好的运行时解释，放入 RelationshipState。
+3. 如果信息只影响当前回复，留在 ResponseStrategy。
+4. RelationshipState 必须通过 evidenceMemoryIds 指向来源 memory。
+5. `.cyrene/affect/state.json` 不能被 memory 系统当作 source of truth。
+6. 当 memory 被用户修正或删除时，RelationshipState 必须重新推导。
+```
 
 ## 模块结构
 
@@ -258,43 +566,42 @@ export interface AffectivePersonaContract {
 
 ```ts
 export interface AffectState {
-  valence: number
-  arousal: number
-  dominance: number
+  labels: AffectLabel[]
+  intensity: number
   confidence: number
-  labels: string[]
-  evidence: string[]
-  updatedAt: string
+  responseNeed: ResponseNeed
+  risk: 'low' | 'medium' | 'high'
+  rationale: string
 }
 ```
 
 语义：
 
 ```txt
-valence    = 当前互动情绪倾向，-1 negative 到 +1 positive
-arousal    = 当前强度，0 calm 到 1 intense
-dominance  = 当前掌控感，0 low agency 到 1 high agency
-confidence = 分析置信度
-labels     = 技术聚焦、困惑、压力、急迫、探索、纠正等短标签
-evidence   = 简短证据摘要，不保存完整用户原文
+labels       = State Taxonomy v1 中允许的短期状态标签
+intensity    = 当前状态强度，0 calm 到 1 intense
+confidence   = 分析置信度
+responseNeed = 从 labels 编译出的回应需求
+risk         = 互动风险等级，不是用户心理风险诊断
+rationale    = 简短理由摘要，不保存完整用户原文
 ```
 
 ### RelationshipState
 
 ```ts
 export interface RelationshipState {
-  trust: number
   familiarity: number
-  unresolvedTension: number
-  preferredTone?: 'direct' | 'warm' | 'technical' | 'brief'
-  boundaries: string[]
-  confidence: number
-  evidence: string[]
-  updatedAt: string
+  trust: number
+  unresolvedFriction: boolean
+  boundarySensitivity: 'normal' | 'careful'
+  communicationPreference: 'direct' | 'gentle' | 'concise' | 'structured'
+  agencyPreference?: 'ask_first' | 'recommend' | 'execute_when_clear'
+  memoryBasis?: 'none' | 'weak' | 'confirmed'
+  evidenceMemoryIds: string[]
 }
 ```
 
-第一版 `RelationshipState` 从 Phase 3 memory 推导，不做复杂长期状态机。它可以被保存到 `.cyrene/affect/state.json` 作为当前快照，但不能直接反写 Phase 3 memory。
+第一版 `RelationshipState` 从 Phase 3 memory 推导，不做复杂长期状态机。它可以被保存到 `.cyrene/affect/state.json` 作为当前快照，但不能直接反写 Phase 3 memory，也不能复制 memory 原文。需要解释来源时，通过 `evidenceMemoryIds` 回到 Phase 3 memory。
 
 ### SyntheticAffectState
 
@@ -379,12 +686,15 @@ Cyrene 可以明确反对用户。
 ```ts
 export interface ResponseStrategy {
   tone: 'direct' | 'gentle' | 'technical' | 'supportive' | 'firm'
+  languageStyle: 'natural_language' | 'technical_compact' | 'formal_report'
+  structure: 'brief' | 'stepwise' | 'diagnostic' | 'decision' | 'tradeoff'
   verbosity: 'low' | 'medium' | 'high'
-  shouldChallengeUser: boolean
-  challengeStrength: 'none' | 'mild' | 'firm' | 'strong'
+  challenge: 'none' | 'soft' | 'direct' | 'firm'
+  agency: 'ask' | 'recommend' | 'execute'
+  memoryUse: 'none' | 'light' | 'explicit'
+  boundaryMode: 'normal' | 'careful' | 'firm'
   shouldAskClarifyingQuestion: boolean
   shouldUseHumor: boolean
-  shouldReferenceMemory: boolean
   shouldAvoidAnthropomorphism: boolean
   safetyMode: 'normal' | 'careful' | 'refuse' | 'escalate'
   rationale: string
@@ -454,7 +764,7 @@ User is emotionally dependent...
 
 ```txt
 Web
-  直接接入，strategy 参与回答生成，右栏 continuity 展示快照。
+  直接接入，strategy 参与回答生成，右栏 `Continuity` 展示快照。
 
 CLI one-shot
   接入 strategy prompt hint，不展示 UI。
@@ -500,23 +810,23 @@ Analyzer prompt 规则：
 - Do not diagnose the user.
 - Do not infer dependence, instability, insecurity, or mental health state.
 - Prefer low confidence when evidence is thin.
-- Use labels that describe response needs, e.g. technical_focus, confusion, urgency, correction, planning.
+- Use only State Taxonomy v1 labels.
 - Return JSON only.
 ```
 
 允许 labels：
 
 ```txt
-technical_focus
-planning
-confusion
-urgency
-frustration_signal
-correction
-exploration
+neutral
+focused
 high_focus
-needs_clarity
-risk_sensitive
+confused
+uncertain
+distressed
+frustrated
+angry
+urgent
+reflective
 ```
 
 拒绝 labels：
@@ -554,65 +864,70 @@ Compiler 规则：
 - `taskContext` 优先于低置信 affect signal。
 - `RelationshipState` 只能作为默认倾向，不覆盖用户当前显式要求。
 - `SyntheticAffectState` 只能调节表达，不得被描述成真实主观情绪。
-- `PrincipledDissentPolicy` 可以提升 `shouldChallengeUser` 和 `challengeStrength`，但必须给出 rationale。
+- `PrincipledDissentPolicy` 可以把 `challenge` 从 `soft` 提升到 `direct` 或 `firm`，但必须给出 rationale。
 - `AffectState.confidence < 0.5` 时，strategy 应更接近 persona baseline。
 - `safetyMode` 可以升级，但不能被 affect 降级。
 - `shouldUseHumor` 默认 false，除非 persona baseline 和当前任务都允许。
-- `shouldReferenceMemory` 只表示可以隐式使用 memory，不代表要显式说“我记得你...”。
+- `memoryUse='light'` 只表示可以隐式使用 memory，不代表要显式说“我记得你...”。
 
-## Web UI: continuity
+## Web UI: Continuity
 
 右边栏不新增独立 Affect 面板。原 memory 区域升级为：
 
 ```txt
-continuity
+Continuity
 ```
 
-`continuity` 表示长期记忆、当前状态和关系连续性。它避免把 affect 独立包装成“Cyrene 心情”。
+`Continuity` 表示长期记忆、当前状态和关系连续性。它避免把 affect 独立包装成“Cyrene 心情”。
 
 展示结构：
 
 ```txt
-continuity
+Continuity
 
 Memory
 - relevant project / personal / relationship memories
 
 Affect
 - labels
-- valence / arousal / dominance
-- confidence
-- evidence summary
+- response need
+- intensity / confidence
+- risk
+- rationale summary
 
 Relationship
-- preferred tone
-- boundaries
-- trust / familiarity / unresolved tension
-- confidence
+- communication preference
+- boundary sensitivity
+- trust / familiarity / unresolved friction
+- memory basis
 
 Synthetic Affect
 - curiosity / concern / skepticism / urgency / warmth / protectiveness
 - rationale summary
 
 Dissent
-- should dissent
-- strength
+- should challenge
+- mode / strength
 - triggers
 - rationale summary
 
 Response Strategy
 - tone
+- language style
+- structure
 - verbosity
-- challenge / clarify / humor flags
-- challenge strength
+- challenge
+- agency
+- memory use
+- boundary mode
 - safety mode
 - rationale
 ```
 
 UI 约束：
 
-- 右栏标题使用 `continuity`。
-- affect 信息展示在 memory 下面，作为 continuity 的下层上下文。
+- 右栏 tab 文案使用 `Continuity`，首字母大写，不能截断。
+- affect 信息展示在 memory 下面，作为 Continuity 的下层上下文。
 - 默认可以折叠，避免占用主聊天空间。
 - 不展示“Cyrene 当前心情”。
 - 不做情绪头像变化、拟人动画或心理画像卡。
@@ -639,8 +954,8 @@ Integration tests：
 - CLI one-shot 会计算 strategy，并注入 prompt hint。
 - REPL 每轮重新计算 affect runtime。
 - analyzer failure 不阻塞 final response。
-- Web session payload 或 SSE event 暴露 continuity snapshot。
-- `continuity` 数据结构包含 memory、affect、relationship、synthetic affect、dissent 和 response strategy。
+- Web session payload 或 SSE event 暴露 `continuity` snapshot。
+- `continuity` 数据结构包含 memory、affect、relationship、synthetic affect、dissent 和 response strategy；UI tab 文案显示为 `Continuity`。
 
 Regression tests：
 
@@ -648,6 +963,8 @@ Regression tests：
 - Persona Contract 不会被普通 run 修改。
 - DissentPolicy 不会把“Cyrene 的情绪”当成反驳理由。
 - pending/active memory 逻辑不读取 `.cyrene/affect/state.json` 作为 source of truth。
+- `RelationshipState` 不复制 memory 原文，只保存 derived state 和 `evidenceMemoryIds`。
+- default strategy 在无显式 strategy 提示时保持 `gentle`、`natural_language`、适度简洁、适当建议、可反驳、轻量使用 memory、保持边界。
 
 Verification commands：
 
@@ -656,7 +973,7 @@ npm run typecheck
 npm test
 ```
 
-如果 Web UI 有明显布局改动，还需要启动本地 Web UI 并用 Browser 检查右栏 `continuity` 展示。
+如果 Web UI 有明显布局改动，还需要启动本地 Web UI 并用 Browser 检查右栏 `Continuity` 展示。
 
 ## 验收标准
 
@@ -665,8 +982,8 @@ npm test
 [ ] Web / CLI / REPL run 都能计算 ResponseStrategy
 [ ] ResponseStrategy 直接参与回答生成
 [ ] analyzer failure 会 fallback，不阻塞用户回答
-[ ] Web UI 右栏命名为 continuity
-[ ] continuity 在 memory 下展示 affect / relationship / synthetic affect / dissent / strategy
+[ ] Web UI 右栏 tab 文案命名为 `Continuity`，并且不截断
+[ ] `Continuity` 在 memory 下展示 affect / relationship / synthetic affect / dissent / strategy
 [ ] no code path claims Cyrene has subjective emotion
 [ ] no code path uses simulated emotion to guilt, pressure, manipulate, or create dependency
 [ ] DissentPolicy 可以让 Cyrene 基于事实、安全、架构风险或长期目标反驳用户
@@ -674,6 +991,8 @@ npm test
 [ ] no code path treats user affect analysis as psychological diagnosis
 [ ] AffectState 不会自动写入 Phase 3 active memory
 [ ] Persona Contract 不能在 normal run 中自动更新
+[ ] `RelationshipState` 与 Phase 3 memory 不重复保存同一自然语言偏好
+[ ] default strategy profile 按用户设定生效，并能被当前 turn / safety / boundary 覆盖
 [ ] npm run typecheck 通过
 [ ] npm test 通过
 ```
@@ -688,7 +1007,7 @@ npm test
 6. 实现 response strategy compiler。
 7. 把 `affect-runtime` 接入 Web / CLI / REPL prompt 构建。
 8. 写 `.cyrene/affect/state.json` 和 `events.jsonl`。
-9. 把 Web 右栏 memory 区域升级为 `continuity`。
+9. 把 Web 右栏 memory 区域升级为 `Continuity`。
 10. 补齐 unit / integration / regression tests。
 
 ## 风险和缓解
@@ -704,7 +1023,7 @@ npm test
 缓解：contract 只通过显式修改、版本化和 changelog 更新。
 
 风险：Web UI 把 affect 展示成心理画像。
-缓解：合并进 continuity，展示 strategy/rationale，不展示“当前心情”。
+缓解：合并进 `Continuity`，展示 strategy/rationale，不展示“当前心情”。
 
 风险：analyzer 模型失败影响主流程。
 缓解：规则 fallback 和 best-effort runtime，失败不阻塞回答。

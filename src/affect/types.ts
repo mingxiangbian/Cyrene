@@ -51,11 +51,12 @@ export type AffectLabel =
   | 'focused'
   | 'high_focus'
   | 'confused'
+  | 'uncertain'
   | 'distressed'
   | 'frustrated'
   | 'angry'
-  | 'uncertain'
   | 'urgent'
+  | 'reflective'
 
 export type ResponseNeed =
   | 'normal'
@@ -64,6 +65,7 @@ export type ResponseNeed =
   | 'deescalate_and_clarify'
   | 'technical_directness'
   | 'concise_execution'
+  | 'structured_tradeoff'
 
 export type AffectRisk = 'low' | 'medium' | 'high'
 
@@ -85,6 +87,9 @@ export interface RelationshipState {
   unresolvedFriction: boolean
   boundarySensitivity: BoundarySensitivity
   communicationPreference: CommunicationPreference
+  agencyPreference?: 'ask_first' | 'recommend' | 'execute_when_clear'
+  memoryBasis?: 'none' | 'weak' | 'confirmed'
+  evidenceMemoryIds: string[]
 }
 
 export interface SyntheticAffectState {
@@ -102,7 +107,13 @@ export interface PrincipledDissentPolicy {
 
 export interface ResponseStrategy {
   tone: 'direct' | 'gentle' | 'technical' | 'supportive' | 'firm'
+  languageStyle: 'natural_language' | 'technical_compact' | 'formal_report'
+  structure: 'brief' | 'stepwise' | 'diagnostic' | 'decision' | 'tradeoff'
   verbosity: 'low' | 'medium' | 'high'
+  challenge: 'none' | 'soft' | 'direct' | 'firm'
+  agency: 'ask' | 'recommend' | 'execute'
+  memoryUse: 'none' | 'light' | 'explicit'
+  boundaryMode: 'normal' | 'careful' | 'firm'
   shouldChallengeUser: boolean
   shouldAskClarifyingQuestion: boolean
   shouldUseHumor: boolean

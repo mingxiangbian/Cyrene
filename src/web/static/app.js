@@ -1141,12 +1141,21 @@ function renderContinuityPanel() {
     ]),
     renderContinuitySection('relationship', [
       ['Preference', state.continuity.relationship?.communicationPreference || 'structured'],
-      ['Boundary', state.continuity.relationship?.boundarySensitivity || 'normal']
+      ['Agency', state.continuity.relationship?.agencyPreference || 'recommend'],
+      ['Boundary', state.continuity.relationship?.boundarySensitivity || 'normal'],
+      ['Memory basis', state.continuity.relationship?.memoryBasis || 'none'],
+      ['Evidence', formatList(state.continuity.relationship?.evidenceMemoryIds, 'none')]
     ]),
     renderContinuitySection('strategy', [
-      ['Tone', state.continuity.strategy?.tone || 'direct'],
+      ['Tone', state.continuity.strategy?.tone || 'gentle'],
+      ['Language', state.continuity.strategy?.languageStyle || 'natural_language'],
+      ['Structure', state.continuity.strategy?.structure || 'stepwise'],
       ['Verbosity', state.continuity.strategy?.verbosity || 'medium'],
-      ['Challenge', state.continuity.strategy?.shouldChallengeUser ? 'yes' : 'no']
+      ['Challenge', state.continuity.strategy?.challenge || (state.continuity.strategy?.shouldChallengeUser ? 'direct' : 'soft')],
+      ['Agency', state.continuity.strategy?.agency || 'recommend'],
+      ['Memory use', state.continuity.strategy?.memoryUse || 'light'],
+      ['Boundary mode', state.continuity.strategy?.boundaryMode || 'normal'],
+      ['Safety', state.continuity.strategy?.safetyMode || 'normal']
     ])
   )
   return panel
@@ -1179,8 +1188,8 @@ function renderContinuitySection(title, rows) {
   return section
 }
 
-function formatList(value) {
-  return Array.isArray(value) && value.length > 0 ? value.join(', ') : 'neutral'
+function formatList(value, fallback = 'neutral') {
+  return Array.isArray(value) && value.length > 0 ? value.join(', ') : fallback
 }
 
 function renderTool(tool) {

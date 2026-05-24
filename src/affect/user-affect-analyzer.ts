@@ -5,11 +5,12 @@ const ALLOWED_LABELS = new Set<AffectLabel>([
   'focused',
   'high_focus',
   'confused',
+  'uncertain',
   'distressed',
   'frustrated',
   'angry',
-  'uncertain',
-  'urgent'
+  'urgent',
+  'reflective'
 ])
 
 const ALLOWED_RESPONSE_NEEDS = new Set<ResponseNeed>([
@@ -18,7 +19,8 @@ const ALLOWED_RESPONSE_NEEDS = new Set<ResponseNeed>([
   'simplify_and_structure',
   'deescalate_and_clarify',
   'technical_directness',
-  'concise_execution'
+  'concise_execution',
+  'structured_tradeoff'
 ])
 
 const ALLOWED_RISKS = new Set<AffectRisk>(['low', 'medium', 'high'])
@@ -69,6 +71,9 @@ function analyzeWithRules(userMessage: string): AffectState {
   if (matchesAny(text, ['没看懂', '不懂', '不知道', '困惑', 'confused', 'clarify'])) {
     labels.add('confused')
   }
+  if (matchesAny(text, ['不确定', '犹豫', '取舍', '权衡', 'uncertain', 'tradeoff'])) {
+    labels.add('uncertain')
+  }
   if (matchesAny(text, ['烦', '生气', '火大', 'angry'])) {
     labels.add('angry')
   }
@@ -83,6 +88,9 @@ function analyzeWithRules(userMessage: string): AffectState {
   }
   if (matchesAny(text, ['别废话', '高效', '直接执行', 'high focus'])) {
     labels.add('high_focus')
+  }
+  if (matchesAny(text, ['架构', '设计', '设定', '路线', '命名', 'reflective'])) {
+    labels.add('reflective')
   }
   if (labels.size === 0) {
     labels.add('neutral')
@@ -124,8 +132,9 @@ function responseNeedForLabels(labels: Set<AffectLabel>): ResponseNeed {
   if (labels.has('distressed')) return 'lower_cognitive_load'
   if (labels.has('angry') || labels.has('frustrated')) return 'deescalate_and_clarify'
   if (labels.has('confused')) return 'simplify_and_structure'
-  if (labels.has('high_focus')) return 'concise_execution'
+  if (labels.has('high_focus') || labels.has('urgent')) return 'concise_execution'
   if (labels.has('focused')) return 'technical_directness'
+  if (labels.has('uncertain') || labels.has('reflective')) return 'structured_tradeoff'
   return 'normal'
 }
 

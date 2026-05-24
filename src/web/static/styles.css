@@ -993,17 +993,16 @@ button:disabled {
 }
 
 .tabs {
-  display: grid;
-  grid-template-columns: auto auto minmax(112px, 1fr);
+  display: flex;
   gap: 8px;
+  overflow-x: auto;
   padding: 14px;
 }
 
 .tab {
-  min-width: 0;
+  flex: 0 0 auto;
+  min-width: max-content;
   padding: 0 10px;
-  overflow: hidden;
-  text-overflow: ellipsis;
 }
 
 .tab.is-active {
