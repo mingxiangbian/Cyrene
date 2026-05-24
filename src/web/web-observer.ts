@@ -8,6 +8,7 @@ export type WebRunEvent =
   | { type: 'thinking_stop'; durationMs: number }
   | { type: 'tool_start'; name: string; summary: string }
   | { type: 'tool_result'; name: string; ok: boolean; durationMs: number; summary: string }
+  | { type: 'cancelled'; message: string }
   | { type: 'final'; text: string }
   | { type: 'error'; message: string }
 

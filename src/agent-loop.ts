@@ -30,6 +30,7 @@ interface RunAgentLoopBaseInput {
     processRunMemory: typeof processRunMemory
   }
   callModel?: (input: CallModelInput) => Promise<ModelResponse>
+  abortSignal?: AbortSignal
 }
 
 export type RunAgentLoopInput = RunAgentLoopBaseInput &
@@ -89,7 +90,8 @@ export async function runAgentLoop(input: RunAgentLoopInput): Promise<RunAgentLo
               },
               messages: [{ role: 'user', content: buildSummarizationPrompt(text) }],
               tools: [],
-              useCase: 'summarization'
+              useCase: 'summarization',
+              signal: input.abortSignal
             })
             return response.content
           }
@@ -114,7 +116,8 @@ export async function runAgentLoop(input: RunAgentLoopInput): Promise<RunAgentLo
         config: input.config,
         messages: modelMessages,
         tools: toolDefinitions(input.tools),
-        useCase: 'chat'
+        useCase: 'chat',
+        signal: input.abortSignal
       })
     } finally {
       notifyObserver(() => observer?.onThinkingStop(Date.now() - thinkingStartedAt))

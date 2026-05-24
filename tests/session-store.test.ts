@@ -8,6 +8,7 @@ import {
   deleteSession,
   listSessions,
   loadSession,
+  removeLastSessionMessage,
   updateSessionPinned
 } from '../src/session-store.js'
 
@@ -301,6 +302,59 @@ describe('session store', () => {
 
     await expect(deleteSession({ cwd, sessionId: 'missing-jsonl' })).resolves.toBe(true)
     await expect(listSessions(cwd)).resolves.toEqual([])
+  })
+
+  it('removes the last matching user message when a Web run is cancelled in an existing session', async () => {
+    const cwd = await createTempCwd()
+    const session = await createSession({
+      cwd,
+      mode: 'web',
+      model: 'test-model',
+      id: 'cancel-existing',
+      now: new Date('2026-05-20T01:00:00.000Z'),
+      firstUserMessage: { role: 'user', content: 'Keep this original request' }
+    })
+    await appendSessionEvent({
+      cwd,
+      sessionId: session.id,
+      event: {
+        type: 'message',
+        at: '2026-05-20T01:01:00.000Z',
+        message: { role: 'assistant', content: 'Original answer' }
+      }
+    })
+    await appendSessionEvent({
+      cwd,
+      sessionId: session.id,
+      event: {
+        type: 'message',
+        at: '2026-05-20T01:02:00.000Z',
+        message: { role: 'user', content: 'typo to cancel' }
+      }
+    })
+
+    await expect(removeLastSessionMessage({
+      cwd,
+      sessionId: session.id,
+      expectedMessage: { role: 'user', content: 'typo to cancel' }
+    })).resolves.toBe(true)
+
+    await expect(loadSession({ cwd, sessionId: session.id, recentMessages: 10 })).resolves.toEqual({
+      session: expect.objectContaining({
+        id: 'cancel-existing',
+        title: 'Keep this original request',
+        preview: 'Original answer',
+        updatedAt: '2026-05-20T01:01:00.000Z'
+      }),
+      messages: [
+        { role: 'user', content: 'Keep this original request' },
+        { role: 'assistant', content: 'Original answer' }
+      ],
+      modelMessages: [
+        { role: 'user', content: 'Keep this original request' },
+        { role: 'assistant', content: 'Original answer' }
+      ]
+    })
   })
 
   it('rejects deleting a symlink JSONL file and leaves the target and index entry intact', async () => {

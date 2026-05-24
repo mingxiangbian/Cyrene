@@ -1,5 +1,5 @@
 import { execFile } from 'node:child_process'
-import { access, mkdtemp, readFile, rm } from 'node:fs/promises'
+import { access, mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { promisify } from 'node:util'
@@ -32,5 +32,19 @@ describe('setup-local-state', () => {
     await expect(readFile(join(root, '.cyrene', 'memory', 'daily.md'), 'utf8')).rejects.toMatchObject({
       code: 'ENOENT'
     })
+  })
+
+  it('removes legacy workspace memory state now that memory lives at the Cyrene root', async () => {
+    const root = await createTempDir()
+    const legacyMemoryDir = join(root, 'workspace', '.cyrene', 'memory')
+    await mkdir(legacyMemoryDir, { recursive: true })
+    await writeFile(join(legacyMemoryDir, 'index.jsonl'), '{"id":"legacy-test-memory"}\n')
+
+    await execFileAsync(process.execPath, [join(process.cwd(), 'scripts/setup-local-state.mjs')], { cwd: root })
+
+    await expect(readFile(join(legacyMemoryDir, 'index.jsonl'), 'utf8')).rejects.toMatchObject({
+      code: 'ENOENT'
+    })
+    await expect(access(join(root, '.cyrene', 'memory'))).resolves.toBeUndefined()
   })
 })

@@ -55,6 +55,9 @@ const state = {
   sessionMenuPosition: null,
   messages: [],
   activeRun: null,
+  activeRunId: null,
+  pendingRun: null,
+  cancelRequested: false,
   isSending: false,
   workspaces: [],
   workspaceId: '',
@@ -124,6 +127,11 @@ document.addEventListener('keydown', (event) => {
     return
   }
   if (event.key === 'Escape') {
+    if (isRunLocked()) {
+      event.preventDefault()
+      void cancelActiveRun()
+      return
+    }
     closeThinkingModeMenu()
   }
 })
@@ -220,15 +228,23 @@ function stopLeftResize(event) {
 }
 
 async function sendPrompt() {
+  if (isRunLocked()) {
+    await cancelActiveRun()
+    return
+  }
+
   const content = promptInput?.value.trim()
-  if (!content || state.activeRun) {
+  if (!content) {
     return
   }
 
   closeSessionMenu(false)
   clearEmptyState()
-  appendMessage('user', content)
+  const previousSessionId = state.sessionId
+  const userNode = appendMessage('user', content)
   state.messages.push({ role: 'user', content })
+  state.pendingRun = { content, node: userNode, previousSessionId }
+  state.cancelRequested = false
   if (promptInput) {
     promptInput.value = ''
     autoResizePromptInput()
@@ -262,9 +278,16 @@ async function sendPrompt() {
   }
 
   const { runId, sessionId, modelContext } = await response.json()
+  state.activeRunId = runId
   state.sessionId = sessionId
   updateModelContext(modelContext)
   renderSessionList()
+
+  if (state.cancelRequested) {
+    await cancelActiveRun()
+    return
+  }
+
   const stream = new EventSource(`/api/runs/${runId}/events`)
   state.activeRun = stream
 
@@ -327,6 +350,11 @@ function handleRunEvent(event, stream) {
     case 'error':
       finishWithError(event.message, stream)
       break
+    case 'cancelled':
+      restorePendingPrompt()
+      updateRunStatus(event.message || 'Run cancelled.')
+      finishRun(stream)
+      break
     default:
       updateRunStatus(event.type || 'Unknown event')
   }
@@ -336,6 +364,9 @@ function finishRun(stream) {
   stream?.close()
   if (!stream || state.activeRun === stream) {
     state.activeRun = null
+    state.activeRunId = null
+    state.cancelRequested = false
+    state.pendingRun = null
     setSending(false)
     updateChatLayoutState()
     void loadSessions()
@@ -349,6 +380,61 @@ function finishWithError(error, stream) {
   updateContextUsageIndicator()
   updateRunStatus('Error')
   finishRun(stream || state.activeRun)
+}
+
+async function cancelActiveRun() {
+  state.cancelRequested = true
+  state.activeRun?.close()
+  state.activeRun = null
+  const runId = state.activeRunId
+  if (!runId) {
+    restorePendingPrompt({ keepPending: true })
+    setSending(false)
+    updateRunStatus('Run cancellation queued.')
+    return
+  }
+
+  try {
+    await fetch(`/api/runs/${encodeURIComponent(runId)}/cancel`, { method: 'POST' })
+  } catch {
+  }
+  restorePendingPrompt()
+  state.activeRunId = null
+  state.cancelRequested = false
+  setSending(false)
+  updateRunStatus('Run cancelled.')
+  void loadSessions()
+}
+
+function restorePendingPrompt(options = {}) {
+  const pending = state.pendingRun
+  if (pending === null) {
+    return
+  }
+
+  if (pending.node?.isConnected) {
+    pending.node.remove()
+  }
+  const lastMessage = state.messages[state.messages.length - 1]
+  if (lastMessage?.role === 'user' && lastMessage.content === pending.content) {
+    state.messages.pop()
+  }
+  state.sessionId = pending.previousSessionId
+  if (promptInput) {
+    promptInput.disabled = false
+    promptInput.value = pending.content
+    autoResizePromptInput()
+    promptInput.focus()
+  }
+  updateContextUsageIndicator()
+  updateChatLayoutState()
+  if (state.messages.length === 0) {
+    renderEmptyState()
+  }
+  renderSessionList()
+  if (options.keepPending !== true) {
+    state.pendingRun = null
+  }
 }
 
 function appendMessage(kind, text) {
@@ -1144,7 +1230,7 @@ function renderContinuityPanel() {
       ['Agency', state.continuity.relationship?.agencyPreference || 'recommend'],
       ['Boundary', state.continuity.relationship?.boundarySensitivity || 'normal'],
       ['Memory basis', state.continuity.relationship?.memoryBasis || 'none'],
-      ['Evidence', formatList(state.continuity.relationship?.evidenceMemoryIds, 'none')]
+      ['Memory evidence', formatEvidenceSummary(state.continuity.relationship?.evidenceMemoryIds)]
     ]),
     renderContinuitySection('strategy', [
       ['Tone', state.continuity.strategy?.tone || 'gentle'],
@@ -1192,6 +1278,14 @@ function formatList(value, fallback = 'neutral') {
   return Array.isArray(value) && value.length > 0 ? value.join(', ') : fallback
 }
 
+function formatEvidenceSummary(value) {
+  if (!Array.isArray(value) || value.length === 0) {
+    return 'none'
+  }
+  const label = value.length === 1 ? 'memory reference' : 'memory references'
+  return `${value.length} ${label}`
+}
+
 function renderTool(tool) {
   const node = document.createElement('article')
   node.className = 'tool-card'
@@ -1225,8 +1319,9 @@ function setSending(isSending) {
     closeSessionMenu(false)
   }
   if (sendButton) {
-    sendButton.disabled = isSending
-    sendButton.textContent = isSending ? 'Running' : 'Send'
+    sendButton.disabled = false
+    sendButton.textContent = isSending ? 'Stop' : 'Send'
+    sendButton.setAttribute('aria-label', isSending ? 'Cancel run and restore prompt' : 'Send message')
   }
   if (promptInput) {
     promptInput.disabled = isSending

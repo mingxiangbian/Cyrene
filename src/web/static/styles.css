@@ -1235,6 +1235,7 @@ body.theme-dark .think-mode-button,
 body.theme-dark .think-mode-menu,
 body.theme-dark .markdown-file-select,
 body.theme-dark .markdown-preview,
+body.theme-dark .continuity-section,
 body.theme-dark .tool-card {
   border-color: rgba(203, 189, 255, 0.2);
   background: rgba(24, 31, 69, 0.68);
@@ -1247,6 +1248,7 @@ body.theme-dark .muted,
 body.theme-dark .session-history-empty,
 body.theme-dark .run-status-row,
 body.theme-dark .message-identity,
+body.theme-dark .continuity-row,
 body.theme-dark .tool-card p,
 body.theme-dark .tool-meta {
   color: var(--muted);

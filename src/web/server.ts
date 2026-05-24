@@ -16,6 +16,7 @@ import {
   deleteSession,
   listSessions,
   loadSession,
+  removeLastSessionMessage,
   updateSessionPinned,
   type SessionIndexItem
 } from '../session-store.js'
@@ -57,6 +58,9 @@ interface RunRecord {
   events: WebRunEvent[]
   clients: Set<ServerResponse>
   done: boolean
+  cancelled: boolean
+  createdSession: boolean
+  abortController: AbortController
 }
 
 interface WebServerContext {
@@ -156,6 +160,12 @@ async function routeRequest(
 
   if (request.method === 'POST' && url.pathname === '/api/runs') {
     await createRun(request, response, context)
+    return
+  }
+
+  const cancelRunMatch = /^\/api\/runs\/([^/]+)\/cancel$/.exec(url.pathname)
+  if (request.method === 'POST' && cancelRunMatch !== null) {
+    await cancelRun(response, context.runs, cancelRunMatch[1])
     return
   }
 
@@ -323,7 +333,10 @@ async function createRun(
     modelContext,
     events: [],
     clients: new Set(),
-    done: false
+    done: false,
+    cancelled: false,
+    createdSession: parsed.sessionId === undefined,
+    abortController: new AbortController()
   }
   context.runs.set(record.id, record)
   writeJson(response, 202, { runId: record.id, sessionId: record.sessionId, modelContext: record.modelContext })
@@ -374,8 +387,14 @@ async function runWebAgent(
           emit(record, event)
         }
       })),
-      callModel: recorder.wrapCallModel(callModel ?? defaultCallModel)
+      callModel: recorder.wrapCallModel(callModel ?? defaultCallModel),
+      abortSignal: record.abortController.signal
     })
+    if (record.cancelled) {
+      await recorder.recordMessages(modelMessages.slice(currentTurnStartIndex))
+      await recorder.finalize({ status: 'error', finalText: '', error: new Error('Run cancelled.') })
+      return
+    }
     const traceMessages = modelMessages.slice(currentTurnStartIndex)
     await appendRunModelMessages({
       cwd: record.cwd,
@@ -387,6 +406,12 @@ async function runWebAgent(
     await recorder.finalize({ status: 'ok', finalText: result.finalText })
     emit(record, { type: 'final', text: result.finalText })
   } catch (error) {
+    if (record.cancelled || isAbortError(error)) {
+      record.cancelled = true
+      await recorder.recordMessages(modelMessages?.slice(currentTurnStartIndex) ?? [record.userMessage])
+      await recorder.finalize({ status: 'error', finalText: '', error: new Error('Run cancelled.') })
+      return
+    }
     await recorder.recordMessages(modelMessages?.slice(currentTurnStartIndex) ?? [record.userMessage])
     await recorder.finalize({ status: 'error', finalText: '', error })
     await appendSessionEvent({
@@ -597,20 +622,64 @@ async function deleteSessionRoute(
   writeJson(response, 200, { deleted: true })
 }
 
+async function cancelRun(
+  response: ServerResponse,
+  runs: Map<string, RunRecord>,
+  runId: string
+): Promise<void> {
+  const record = runs.get(runId)
+  if (record === undefined) {
+    writeJson(response, 404, { error: 'Run not found.' })
+    return
+  }
+
+  if (record.done) {
+    writeJson(response, 200, { cancelled: record.cancelled, done: true })
+    return
+  }
+
+  record.cancelled = true
+  record.abortController.abort()
+  await rollbackCancelledSession(record).catch(() => {})
+  emit(record, { type: 'cancelled', message: 'Run cancelled.' })
+  writeJson(response, 202, { cancelled: true })
+}
+
+async function rollbackCancelledSession(record: RunRecord): Promise<void> {
+  if (record.createdSession) {
+    await deleteSession({ cwd: record.cwd, sessionId: record.sessionId })
+    return
+  }
+
+  await removeLastSessionMessage({
+    cwd: record.cwd,
+    sessionId: record.sessionId,
+    expectedMessage: record.userMessage
+  })
+}
+
 function emit(record: RunRecord, event: WebRunEvent): void {
+  if (record.done) {
+    return
+  }
+
   record.events.push(event)
 
   for (const client of record.clients) {
     writeSseEvent(client, event)
   }
 
-  if (event.type === 'final' || event.type === 'error') {
+  if (event.type === 'final' || event.type === 'error' || event.type === 'cancelled') {
     record.done = true
     for (const client of record.clients) {
       client.end()
     }
     record.clients.clear()
   }
+}
+
+function isAbortError(error: unknown): boolean {
+  return error instanceof Error && (error.name === 'AbortError' || error.message.includes('aborted'))
 }
 
 function streamRunEvents(

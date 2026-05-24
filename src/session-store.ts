@@ -123,6 +123,63 @@ export async function appendSessionEvent(input: {
   await writeIndex(input.cwd, upsertSession(index, next))
 }
 
+export async function removeLastSessionMessage(input: {
+  cwd: string
+  sessionId: string
+  expectedMessage: ChatMessage
+}): Promise<boolean> {
+  assertSafeSessionId(input.sessionId)
+  const index = await readIndex(input.cwd)
+  const existing = index.find((item) => item.id === input.sessionId)
+  if (existing === undefined) {
+    return false
+  }
+
+  const path = sessionFilePath(input.cwd, input.sessionId)
+  await assertPathIsNotSymlink(path)
+  const raw = await readFile(path, 'utf8').catch((error: unknown) => {
+    if (isObject(error) && error.code === 'ENOENT') return ''
+    throw error
+  })
+  const lines = raw.split(/\r?\n/)
+  while (lines.length > 0 && lines[lines.length - 1]?.trim() === '') {
+    lines.pop()
+  }
+  const lastIndex = lines.length - 1
+  if (lastIndex < 0) {
+    return false
+  }
+
+  const event = parseEventLine(lines[lastIndex] ?? '')
+  if (
+    event?.type !== 'message' ||
+    event.message.role !== input.expectedMessage.role ||
+    event.message.content !== input.expectedMessage.content
+  ) {
+    return false
+  }
+
+  lines.splice(lastIndex, 1)
+  await writeFile(path, lines.length === 0 ? '' : `${lines.join('\n')}\n`, 'utf8')
+
+  const remainingEvents = lines
+    .map(parseEventLine)
+    .filter((entry): entry is SessionEvent => entry !== null)
+  const displayEvents = remainingEvents.filter((entry) => entry.type === 'message' && isDisplayMessage(entry.message))
+  const firstUser = displayEvents.find((entry) => entry.type === 'message' && entry.message.role === 'user')
+  const lastDisplay = [...remainingEvents].reverse().find((entry) => {
+    return entry.type === 'error' || (entry.type === 'message' && isDisplayMessage(entry.message))
+  })
+  const next: SessionIndexItem = {
+    ...existing,
+    title: firstUser?.type === 'message' ? titleFromMessage(firstUser.message) ?? 'Untitled session' : 'Untitled session',
+    preview: previewFromSessionEvent(lastDisplay),
+    updatedAt: lastDisplay?.at ?? existing.createdAt
+  }
+  await writeIndex(input.cwd, upsertSession(index, next))
+  return true
+}
+
 export async function listSessions(cwd: string): Promise<SessionIndexItem[]> {
   return readIndex(cwd)
 }
@@ -481,6 +538,16 @@ function previewFromMessage(message: ChatMessage | undefined): string | undefine
     return undefined
   }
   return truncateOneLine(message.content, 120)
+}
+
+function previewFromSessionEvent(event: SessionEvent | undefined): string {
+  if (event === undefined) {
+    return ''
+  }
+  if (event.type === 'error') {
+    return truncateOneLine(event.message, 120)
+  }
+  return previewFromMessage(event.message) ?? ''
 }
 
 function truncateOneLine(text: string, maxLength: number): string {

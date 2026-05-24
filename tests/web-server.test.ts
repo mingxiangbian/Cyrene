@@ -184,6 +184,7 @@ describe('startWebServer', () => {
     expect(body).toContain('@keyframes statusFlow')
     expect(body).toContain('linear-gradient(135deg, #e2eef9 0%, #f0f7ff 45%, #ffeaf6 100%)')
     expect(body).toContain('body.theme-dark')
+    expect(body).toContain('body.theme-dark .continuity-section')
     expect(body).toContain('--dark-panel')
     expect(body).toContain('.session-menu')
     expect(body).toContain('.session-pin-indicator')
@@ -516,10 +517,16 @@ describe('startWebServer', () => {
     expect(body).toContain('formatThinkingStatus')
     expect(body).toContain('renderContinuityPanel')
     expect(body).toContain('state.continuity')
+    expect(body).toContain('cancelActiveRun')
+    expect(body).toContain('/cancel')
+    expect(body).toContain("sendButton.textContent = isSending ? 'Stop' : 'Send'")
+    expect(body).toContain('formatEvidenceSummary')
+    expect(body).toContain('memory reference')
     expect(body).toContain('Language')
     expect(body).toContain('Structure')
     expect(body).toContain('Memory use')
     expect(body).toContain('Boundary mode')
+    expect(body).not.toContain("['Evidence', formatList")
     expect(body).toContain("return 'Thinking...'")
     expect(body).toContain("classList.toggle('show-value'")
     expect(body).toContain('session-history')
@@ -617,6 +624,49 @@ describe('startWebServer', () => {
     expect(callModel).toHaveBeenCalledWith(expect.objectContaining({
       messages: expect.arrayContaining([{ role: 'user', content: 'hello web' }])
     } satisfies Partial<CallModelInput>))
+  })
+
+  it('cancels an active Web run and removes the provisional new session', async () => {
+    let finishModel: (() => void) | undefined
+    let seenSignal: AbortSignal | undefined
+    let resolveModelStarted: (() => void) | undefined
+    const modelStarted = new Promise<void>((resolve) => {
+      resolveModelStarted = resolve
+    })
+    const callModel = vi.fn(async (input: CallModelInput): Promise<ModelResponse> => {
+      seenSignal = (input as CallModelInput & { signal?: AbortSignal }).signal
+      resolveModelStarted?.()
+      await new Promise<void>((finish) => {
+        finishModel = finish
+      })
+      return { content: 'late answer', toolCalls: [] }
+    })
+    const server = await startServer(callModel)
+
+    const createResponse = await fetch(`${server.url}/api/runs`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ message: 'typo message' })
+    })
+    const createBody = (await createResponse.json()) as { runId: string; sessionId: string }
+    expect(createResponse.status).toBe(202)
+    await modelStarted
+
+    const cancelResponse = await fetch(`${server.url}/api/runs/${createBody.runId}/cancel`, {
+      method: 'POST'
+    })
+    finishModel?.()
+
+    expect(cancelResponse.status).toBe(202)
+    expect(seenSignal?.aborted).toBe(true)
+
+    const { body: streamBody } = await readRunEventStream(`${server.url}/api/runs/${createBody.runId}/events`)
+    expect(streamBody).toContain('"type":"cancelled"')
+    expect(streamBody).not.toContain('"type":"final","text":"late answer"')
+
+    const sessionsResponse = await fetch(`${server.url}/api/sessions`)
+    const sessionsBody = (await sessionsResponse.json()) as { sessions: Array<{ id: string }> }
+    expect(sessionsBody.sessions.some((session) => session.id === createBody.sessionId)).toBe(false)
   })
 
   it('creates a persistent trace using the Web run id', async () => {
@@ -1510,7 +1560,7 @@ async function readRunEventStream(url: string): Promise<{ response: Response; bo
     }
 
     body += decoder.decode(value, { stream: true })
-    if (body.includes('"type":"final"') || body.includes('"type":"error"')) {
+    if (body.includes('"type":"final"') || body.includes('"type":"error"') || body.includes('"type":"cancelled"')) {
       await reader.cancel()
       break
     }

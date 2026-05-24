@@ -79,6 +79,7 @@ export interface CallModelInput {
   messages: ChatMessage[]
   tools: unknown[]
   useCase?: ModelUseCase
+  signal?: AbortSignal
 }
 
 export interface ModelResponse {

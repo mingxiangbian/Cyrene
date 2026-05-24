@@ -31,7 +31,7 @@ export async function callModel(input: CallModelInput): Promise<ModelResponse> {
 
   for (let attempt = 1; attempt <= maxAttempts; attempt++) {
     try {
-      const response = await requestCompletion(input.config, body)
+      const response = await requestCompletion(input.config, body, input.signal)
       if (response.ok) {
         const data = (await response.json()) as ChatCompletionResponse
         return route.provider === 'deepseek'
@@ -63,7 +63,7 @@ export async function callModel(input: CallModelInput): Promise<ModelResponse> {
   throw new Error('LLM request failed')
 }
 
-async function requestCompletion(config: AppConfig, body: ChatCompletionRequestBody): Promise<Response> {
+async function requestCompletion(config: AppConfig, body: ChatCompletionRequestBody, signal?: AbortSignal): Promise<Response> {
   const headers: Record<string, string> = { 'content-type': 'application/json' }
   if (config.model.apiKey?.trim()) {
     headers.authorization = `Bearer ${config.model.apiKey}`
@@ -72,9 +72,16 @@ async function requestCompletion(config: AppConfig, body: ChatCompletionRequestB
   return fetch(`${config.model.baseUrl}/chat/completions`, {
     method: 'POST',
     headers,
-    signal: AbortSignal.timeout(config.llmRequestTimeoutMs),
+    signal: mergeAbortSignals(AbortSignal.timeout(config.llmRequestTimeoutMs), signal),
     body: JSON.stringify(body)
   })
+}
+
+function mergeAbortSignals(timeoutSignal: AbortSignal, inputSignal?: AbortSignal): AbortSignal {
+  if (inputSignal === undefined) {
+    return timeoutSignal
+  }
+  return AbortSignal.any([timeoutSignal, inputSignal])
 }
 
 function validateModelConfig(config: AppConfig, routeModel: string): void {
