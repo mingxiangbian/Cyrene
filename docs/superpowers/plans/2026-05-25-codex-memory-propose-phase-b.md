@@ -44,7 +44,7 @@
 - Read: `package.json`
 - Read: `docs/superpowers/specs/2026-05-25-codex-memory-propose-phase-b-design.md`
 
-- [ ] **Step 1: Confirm branch and status**
+- [x] **Step 1: Confirm branch and status**
 
 Run:
 
@@ -54,7 +54,7 @@ git status --short --branch
 
 Expected: branch is `codex/codex-memory-propose-phase-b`, with only this plan file before the plan commit.
 
-- [ ] **Step 2: Run baseline typecheck**
+- [x] **Step 2: Run baseline typecheck**
 
 Run:
 
@@ -64,7 +64,7 @@ npm run typecheck
 
 Expected: exit code `0`.
 
-- [ ] **Step 3: Run baseline tests**
+- [x] **Step 3: Run baseline tests**
 
 Run:
 
@@ -83,7 +83,7 @@ Expected: exit code `0`.
 - Create: `src/codex/memory-propose.ts`
 - Modify: `src/memory/memory-store.ts`
 
-- [ ] **Step 1: Write failing pending-only runtime tests**
+- [x] **Step 1: Write failing pending-only runtime tests**
 
 Create `tests/codex-memory-propose.test.ts` with tests for:
 
@@ -235,7 +235,7 @@ describe('Codex memory propose', () => {
 })
 ```
 
-- [ ] **Step 2: Verify RED**
+- [x] **Step 2: Verify RED**
 
 Run:
 
@@ -245,7 +245,7 @@ npm test -- tests/codex-memory-propose.test.ts
 
 Expected: FAIL because `src/codex/memory-propose.ts` does not exist.
 
-- [ ] **Step 3: Add root-level write helpers**
+- [x] **Step 3: Add root-level write helpers**
 
 Modify `src/memory/memory-store.ts` to export:
 
@@ -264,7 +264,7 @@ Implementation requirements:
 - Existing `readActiveMemoriesFromRoot()` and `readPendingMemoriesFromRoot()` behavior must not change.
 - Existing cwd-based functions should delegate to root helpers where possible.
 
-- [ ] **Step 4: Implement `src/codex/memory-propose.ts`**
+- [x] **Step 4: Implement `src/codex/memory-propose.ts`**
 
 Create `src/codex/memory-propose.ts` with:
 
@@ -330,7 +330,7 @@ Implementation requirements:
 - Never call `writeActiveMemories()`.
 - Never render memory projections.
 
-- [ ] **Step 5: Verify GREEN**
+- [x] **Step 5: Verify GREEN**
 
 Run:
 
@@ -349,7 +349,7 @@ Expected: all pass.
 - Modify: `src/mcp/mcp-server.ts`
 - Modify: `tests/mcp-server.test.ts`
 
-- [ ] **Step 1: Write failing MCP handler tests**
+- [x] **Step 1: Write failing MCP handler tests**
 
 Modify `tests/mcp-server.test.ts` to import `handleMemoryPropose` and test:
 
@@ -370,7 +370,7 @@ it('handles memory propose as MCP JSON text', async () => {
 })
 ```
 
-- [ ] **Step 2: Verify RED**
+- [x] **Step 2: Verify RED**
 
 Run:
 
@@ -380,7 +380,7 @@ npm test -- tests/mcp-server.test.ts
 
 Expected: FAIL because `src/mcp/tools/memory-propose.ts` does not exist.
 
-- [ ] **Step 3: Implement MCP tool module**
+- [x] **Step 3: Implement MCP tool module**
 
 Create `src/mcp/tools/memory-propose.ts`:
 
@@ -425,7 +425,7 @@ export const memoryProposeInputSchema = {
 
 `handleMemoryPropose(input, fallbackCwd)` calls `proposeCodexMemoryCandidate()` and returns `jsonText(result)`.
 
-- [ ] **Step 4: Register tool in MCP server**
+- [x] **Step 4: Register tool in MCP server**
 
 Modify `src/mcp/mcp-server.ts`:
 
@@ -440,7 +440,7 @@ server.registerTool(
 )
 ```
 
-- [ ] **Step 5: Verify GREEN**
+- [x] **Step 5: Verify GREEN**
 
 Run:
 
@@ -462,7 +462,7 @@ Expected: all pass.
 - Modify: `src/codex/codex-doctor.ts`
 - Modify: `tests/codex-cli.test.ts`
 
-- [ ] **Step 1: Write failing hook install tests**
+- [x] **Step 1: Write failing hook install tests**
 
 Create `tests/codex-hook-install.test.ts` with tests for:
 
@@ -519,7 +519,7 @@ describe('Codex Stop hook install', () => {
 })
 ```
 
-- [ ] **Step 2: Verify RED**
+- [x] **Step 2: Verify RED**
 
 Run:
 
@@ -529,7 +529,7 @@ npm test -- tests/codex-hook-install.test.ts
 
 Expected: FAIL because hook install module does not exist.
 
-- [ ] **Step 3: Implement hook install module**
+- [x] **Step 3: Implement hook install module**
 
 Create `src/codex/codex-hook-install.ts`:
 
@@ -554,7 +554,7 @@ Hook entry:
 }
 ```
 
-- [ ] **Step 4: Wire CLI and doctor**
+- [x] **Step 4: Wire CLI and doctor**
 
 Modify `src/codex/codex-cli.ts`:
 
@@ -578,7 +578,7 @@ advisory: optional Stop hook is not installed
 
 Stop hook missing must not make `status` not ready.
 
-- [ ] **Step 5: Add CLI tests**
+- [x] **Step 5: Add CLI tests**
 
 Modify `tests/codex-cli.test.ts`:
 
@@ -586,7 +586,7 @@ Modify `tests/codex-cli.test.ts`:
 - Test `codex install-hook --stop` writes isolated HOME hooks and preserves existing sound hook.
 - Test doctor shows stop hook advisory when missing.
 
-- [ ] **Step 6: Verify GREEN**
+- [x] **Step 6: Verify GREEN**
 
 Run:
 
@@ -606,7 +606,7 @@ Expected: all pass.
 - Create: `src/codex/codex-hook-stop.ts`
 - Modify: `src/codex/codex-cli.ts`
 
-- [ ] **Step 1: Write failing hook stop tests**
+- [x] **Step 1: Write failing hook stop tests**
 
 Create `tests/codex-hook-stop.test.ts` with tests for:
 
@@ -683,7 +683,7 @@ describe('Codex Stop hook runtime', () => {
 })
 ```
 
-- [ ] **Step 2: Verify RED**
+- [x] **Step 2: Verify RED**
 
 Run:
 
@@ -693,7 +693,7 @@ npm test -- tests/codex-hook-stop.test.ts
 
 Expected: FAIL because hook stop module does not exist.
 
-- [ ] **Step 3: Implement hook stop module**
+- [x] **Step 3: Implement hook stop module**
 
 Create `src/codex/codex-hook-stop.ts`:
 
@@ -723,7 +723,7 @@ Candidate:
 }
 ```
 
-- [ ] **Step 4: Wire CLI**
+- [x] **Step 4: Wire CLI**
 
 Modify `src/codex/codex-cli.ts`:
 
@@ -736,7 +736,7 @@ if (command === 'hook' && input.args[1] === 'stop') {
 
 Invalid hook commands print usage.
 
-- [ ] **Step 5: Verify GREEN**
+- [x] **Step 5: Verify GREEN**
 
 Run:
 
@@ -755,7 +755,7 @@ Expected: all pass.
 - Modify: `integrations/codex/plugin/skills/cyrene-continuity/SKILL.md`
 - Review: `docs/superpowers/specs/2026-05-25-codex-memory-propose-phase-b-design.md`
 
-- [ ] **Step 1: Update skill instructions**
+- [x] **Step 1: Update skill instructions**
 
 Modify the skill required behavior:
 
@@ -765,7 +765,7 @@ Modify the skill required behavior:
 11. Do not invent user preferences from assistant suggestions or silence.
 ```
 
-- [ ] **Step 2: Run targeted tests**
+- [x] **Step 2: Run targeted tests**
 
 Run:
 
@@ -775,7 +775,7 @@ npm test -- tests/codex-memory-propose.test.ts tests/mcp-server.test.ts tests/co
 
 Expected: all pass.
 
-- [ ] **Step 3: Run full typecheck**
+- [x] **Step 3: Run full typecheck**
 
 Run:
 
@@ -785,7 +785,7 @@ npm run typecheck
 
 Expected: exit code `0`.
 
-- [ ] **Step 4: Run full tests**
+- [x] **Step 4: Run full tests**
 
 Run:
 
@@ -795,7 +795,7 @@ npm test
 
 Expected: exit code `0`.
 
-- [ ] **Step 5: Smoke doctor and hook dry-run**
+- [x] **Step 5: Smoke doctor and hook dry-run**
 
 Run:
 
@@ -809,7 +809,7 @@ Expected:
 - doctor reports current MCP/skill/agentmemory state and optional Stop hook status.
 - dry-run prints hook command and does not modify `~/.codex/hooks.json`.
 
-- [ ] **Step 6: Check diff**
+- [x] **Step 6: Check diff**
 
 Run:
 
@@ -820,7 +820,7 @@ git status --short --branch
 
 Expected: no whitespace errors; changed files match this plan.
 
-- [ ] **Step 7: Commit implementation**
+- [x] **Step 7: Commit implementation**
 
 Run:
 

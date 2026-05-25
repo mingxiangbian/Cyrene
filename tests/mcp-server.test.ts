@@ -1,10 +1,28 @@
 import { execFile } from 'node:child_process'
+import { mkdtemp, rm } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 import { promisify } from 'node:util'
-import { describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import { jsonText } from '../src/mcp/mcp-json.js'
 import { createCyreneMcpServer } from '../src/mcp/mcp-server.js'
+import { handleMemoryPropose } from '../src/mcp/tools/memory-propose.js'
 
 const execFileAsync = promisify(execFile)
+const originalHome = process.env.HOME
+const tempDirs: string[] = []
+
+afterEach(async () => {
+  vi.unstubAllEnvs()
+  process.env.HOME = originalHome
+  await Promise.all(tempDirs.splice(0).map((dir) => rm(dir, { recursive: true, force: true })))
+})
+
+async function createTempDir(prefix: string): Promise<string> {
+  const dir = await mkdtemp(join(tmpdir(), prefix))
+  tempDirs.push(dir)
+  return dir
+}
 
 function cliEnv(): NodeJS.ProcessEnv {
   const { FORCE_COLOR: _forceColor, NO_COLOR: _noColor, ...env } = process.env
@@ -27,6 +45,28 @@ describe('Cyrene MCP server', () => {
         }
       ]
     })
+  })
+
+  it('handles memory propose as MCP JSON text', async () => {
+    const home = await createTempDir('cyrene-mcp-memory-home-')
+    vi.stubEnv('HOME', home)
+    const cwd = await createTempDir('cyrene-mcp-memory-project-')
+
+    const result = await handleMemoryPropose(
+      {
+        cwd,
+        candidate: {
+          domain: 'procedural',
+          type: 'procedural_rule',
+          content: 'Codex memory proposals stay pending.',
+          evidence: [{ runId: 'mcp-run-1', summary: 'MCP test.' }]
+        }
+      },
+      process.cwd()
+    )
+
+    expect(result.content[0]?.type).toBe('text')
+    expect(result.content[0]?.text).toContain('"action": "pending"')
   })
 
   it('accepts mcp-server as a local CLI command without treating it as a prompt', async () => {

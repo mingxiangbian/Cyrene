@@ -177,4 +177,92 @@ describe('cyrene codex CLI', () => {
 
     await expect(readFile(join(skillPath, 'SKILL.md'), 'utf8')).resolves.toBe('custom skill\n')
   })
+
+  it('install-hook --stop --dry-run does not write hooks.json', async () => {
+    const home = await createTempDir('cyrene-codex-hook-dry-run-home-')
+    const hooksPath = join(home, '.codex', 'hooks.json')
+
+    const result = await execFileAsync(
+      process.execPath,
+      ['node_modules/tsx/dist/cli.mjs', 'src/main.ts', 'codex', 'install-hook', '--stop', '--dry-run'],
+      { env: cliEnv(home) }
+    )
+
+    expect(result.stderr).toBe('')
+    expect(result.stdout).toContain('dry-run')
+    expect(result.stdout).toContain('codex hook stop')
+    await expect(readFile(hooksPath, 'utf8')).rejects.toMatchObject({ code: 'ENOENT' })
+  })
+
+  it('install-hook --stop writes hooks.json and preserves existing Stop hooks', async () => {
+    const home = await createTempDir('cyrene-codex-hook-install-home-')
+    const hooksPath = join(home, '.codex', 'hooks.json')
+    await mkdir(join(home, '.codex'), { recursive: true })
+    await writeFile(
+      hooksPath,
+      JSON.stringify(
+        {
+          hooks: {
+            Stop: [
+              {
+                hooks: [{ type: 'command', command: '/Users/phoenix/.codex/hooks/task_done_sound.sh', timeout: 5 }]
+              }
+            ]
+          }
+        },
+        null,
+        2
+      )
+    )
+
+    const result = await execFileAsync(
+      process.execPath,
+      ['node_modules/tsx/dist/cli.mjs', 'src/main.ts', 'codex', 'install-hook', '--stop'],
+      { env: cliEnv(home) }
+    )
+
+    expect(result.stderr).toBe('')
+    expect(result.stdout).toContain('Codex Stop hook installed')
+    const parsed = JSON.parse(await readFile(hooksPath, 'utf8')) as {
+      hooks: { Stop: Array<{ hooks: Array<{ command: string }> }> }
+    }
+    const commands = parsed.hooks.Stop.flatMap((entry) => entry.hooks.map((hook) => hook.command))
+    expect(commands).toContain('/Users/phoenix/.codex/hooks/task_done_sound.sh')
+    expect(commands.filter((command) => command.includes('codex hook stop'))).toHaveLength(1)
+  })
+
+  it('doctor reports missing Stop hook as an advisory without blocking readiness', async () => {
+    const home = await createTempDir('cyrene-codex-cli-stop-hook-advisory-home-')
+    const configPath = join(home, '.codex-config.toml')
+    await writeFile(
+      configPath,
+      [
+        '[mcp_servers.cyrene]',
+        'command = "cyrene"',
+        'args = ["mcp-server", "--stdio"]',
+        'enabled = true',
+        '',
+        '[mcp_servers.agentmemory]',
+        'command = "npx"',
+        'args = ["-y", "@agentmemory/mcp"]',
+        'enabled = false'
+      ].join('\n')
+    )
+    await execFileAsync(
+      process.execPath,
+      ['node_modules/tsx/dist/cli.mjs', 'src/main.ts', 'codex', 'install', '--dev'],
+      { env: cliEnv(home) }
+    )
+
+    const result = await execFileAsync(
+      process.execPath,
+      ['node_modules/tsx/dist/cli.mjs', 'src/main.ts', 'codex', 'doctor', '--config', configPath],
+      { env: cliEnv(home) }
+    )
+
+    expect(result.stderr).toBe('')
+    expect(result.stdout).toContain('status: ready')
+    expect(result.stdout).toContain('stop hook: missing')
+    expect(result.stdout).toContain('advisory: optional Stop hook is not installed')
+  })
 })

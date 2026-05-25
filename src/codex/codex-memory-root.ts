@@ -1,4 +1,4 @@
-import { mkdir, realpath } from 'node:fs/promises'
+import { lstat, mkdir, realpath } from 'node:fs/promises'
 import { homedir } from 'node:os'
 import { join } from 'node:path'
 
@@ -17,5 +17,12 @@ export function codexProjectMemoryRoot(projectId: string): string {
 export async function ensureCodexProjectMemoryRoot(projectId: string): Promise<string> {
   const root = codexProjectMemoryRoot(projectId)
   await mkdir(root, { recursive: true })
+  const stats = await lstat(root)
+  if (stats.isSymbolicLink()) {
+    throw new Error(`Refusing to use memory symlink: ${root}`)
+  }
+  if (!stats.isDirectory()) {
+    throw new Error(`Refusing to use non-directory memory path: ${root}`)
+  }
   return realpath(root)
 }

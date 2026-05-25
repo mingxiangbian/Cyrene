@@ -1,4 +1,4 @@
-import { appendFile, lstat, readFile, rename, writeFile } from 'node:fs/promises'
+import { appendFile, lstat, mkdir, readFile, realpath, rename, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { ensureMemoryRoot, getReadableMemoryRoot } from './paths.js'
 import type { CyreneMemory, MemoryEvent, MemoryScores, MemoryTombstone, PendingMemory } from './types.js'
@@ -48,12 +48,22 @@ export async function readPendingMemoriesFromRoot(memoryRoot: string): Promise<P
 
 export async function writePendingMemories(cwd: string, memories: PendingMemory[]): Promise<void> {
   const root = await ensureMemoryRoot(cwd)
-  await writeJsonLinesAtomic(join(root, PENDING_FILE), memories.filter((memory) => memory.status === 'pending'))
+  await writePendingMemoriesFromRoot(root, memories)
 }
 
 export async function upsertPendingMemory(cwd: string, candidate: PendingMemory): Promise<PendingMemory> {
   const root = await ensureMemoryRoot(cwd)
-  const pending = await readPendingMemories(cwd)
+  return upsertPendingMemoryFromRoot(root, candidate)
+}
+
+export async function writePendingMemoriesFromRoot(memoryRoot: string, memories: PendingMemory[]): Promise<void> {
+  const root = await ensureWritableMemoryRoot(memoryRoot)
+  await writeJsonLinesAtomic(join(root, PENDING_FILE), memories.filter((memory) => memory.status === 'pending'))
+}
+
+export async function upsertPendingMemoryFromRoot(memoryRoot: string, candidate: PendingMemory): Promise<PendingMemory> {
+  const root = await ensureWritableMemoryRoot(memoryRoot)
+  const pending = await readPendingMemoriesFromRoot(root)
   const existingIndex = pending.findIndex((memory) => memory.normalizedKey === candidate.normalizedKey)
   let result = candidate
 
@@ -71,6 +81,11 @@ export async function upsertPendingMemory(cwd: string, candidate: PendingMemory)
 
 export async function appendMemoryEvent(cwd: string, event: MemoryEvent): Promise<void> {
   const root = await ensureMemoryRoot(cwd)
+  await appendMemoryEventFromRoot(root, event)
+}
+
+export async function appendMemoryEventFromRoot(memoryRoot: string, event: MemoryEvent): Promise<void> {
+  const root = await ensureWritableMemoryRoot(memoryRoot)
   await appendJsonLine(join(root, EVENTS_FILE), event)
 }
 
@@ -88,7 +103,15 @@ export async function readTombstones(cwd: string): Promise<MemoryTombstone[]> {
   if (root === null) {
     return []
   }
-  return readJsonLines<MemoryTombstone>(join(root, TOMBSTONES_FILE))
+  return readTombstonesFromRoot(root)
+}
+
+export async function readTombstonesFromRoot(memoryRoot: string): Promise<MemoryTombstone[]> {
+  const readable = await isReadableMemoryRoot(memoryRoot)
+  if (!readable) {
+    return []
+  }
+  return readJsonLines<MemoryTombstone>(join(memoryRoot, TOMBSTONES_FILE))
 }
 
 export async function writeTombstones(cwd: string, tombstones: MemoryTombstone[]): Promise<void> {
@@ -98,6 +121,11 @@ export async function writeTombstones(cwd: string, tombstones: MemoryTombstone[]
 
 export async function appendTombstone(cwd: string, tombstone: MemoryTombstone): Promise<void> {
   const root = await ensureMemoryRoot(cwd)
+  await appendTombstoneFromRoot(root, tombstone)
+}
+
+export async function appendTombstoneFromRoot(memoryRoot: string, tombstone: MemoryTombstone): Promise<void> {
+  const root = await ensureWritableMemoryRoot(memoryRoot)
   await appendJsonLine(join(root, TOMBSTONES_FILE), tombstone)
 }
 
@@ -162,6 +190,30 @@ async function isReadableMemoryRoot(memoryRoot: string): Promise<boolean> {
     }
     throw error
   }
+}
+
+async function ensureWritableMemoryRoot(memoryRoot: string): Promise<string> {
+  try {
+    return await getSafeMemoryRoot(memoryRoot)
+  } catch (error) {
+    if (!isFileErrorCode(error, 'ENOENT')) {
+      throw error
+    }
+  }
+
+  await mkdir(memoryRoot, { recursive: true })
+  return getSafeMemoryRoot(memoryRoot)
+}
+
+async function getSafeMemoryRoot(memoryRoot: string): Promise<string> {
+  const stats = await lstat(memoryRoot)
+  if (stats.isSymbolicLink()) {
+    throw new Error(`Refusing to use memory symlink: ${memoryRoot}`)
+  }
+  if (!stats.isDirectory()) {
+    throw new Error(`Refusing to use non-directory memory path: ${memoryRoot}`)
+  }
+  return realpath(memoryRoot)
 }
 
 async function readJsonLines<T>(filePath: string): Promise<T[]> {
