@@ -4,6 +4,11 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>Cyrene</title>
+    <script>
+      if (new URLSearchParams(window.location.search).get('desktop') === '1' || window.__TAURI_INTERNALS__ || window.__TAURI__) {
+        document.documentElement.classList.add('desktop-shell')
+      }
+    </script>
     <link rel="stylesheet" href="/static/styles.css">
   </head>
   <body>

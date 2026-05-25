@@ -39,6 +39,18 @@ describe('Phase 8A soft UI shell CSS contract', () => {
     expect(css).toMatch(/\.send-button-icon\s*\{[\s\S]*?stroke-width:\s*2;/)
   })
 
+  it('keeps desktop window controls clear of the collapsed sidebar avatar', () => {
+    expect(css).toMatch(/--window-control-clearance:\s*0px;/)
+    expect(css).toMatch(/html\.desktop-shell\s*\{[\s\S]*?--window-control-clearance:\s*34px;/)
+    expect(css).toMatch(/\.sidebar\s*\{[\s\S]*?padding:\s*calc\(22px \+ var\(--window-control-clearance\)\)\s+22px\s+22px;/)
+    expect(css).toMatch(/\.app-shell\.sidebar-collapsed \.sidebar\s*\{[\s\S]*?padding:\s*calc\(12px \+ var\(--window-control-clearance\)\)\s+12px\s+12px;/)
+  })
+
+  it('keeps the thinking mode wrapper transparent in dark mode', () => {
+    expect(css).toMatch(/\.think-mode-control\s*\{[\s\S]*?background:\s*transparent;/)
+    expect(css).toMatch(/body\.theme-dark \.think-mode-control\s*\{[\s\S]*?background:\s*transparent;/)
+  })
+
   it('uses soft raised cards for dense inspector information', () => {
     expect(css).toMatch(/\.control-item\s*\{[\s\S]*?box-shadow:\s*var\(--surface-raised-subtle\);/)
     expect(css).toMatch(/\.continuity-section\s*\{[\s\S]*?box-shadow:\s*var\(--surface-raised-subtle\);/)

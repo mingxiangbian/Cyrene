@@ -13,6 +13,8 @@ describe('macOS launcher generator', () => {
       appPath: '/Users/phoenix/Applications/Cyrene.app',
       iconSource: '/repo/src/web/static/assets/cyrene-cartoon-avatar.png',
       iconName: 'Cyrene.icns',
+      tauriIconPath: '/repo/src-tauri/icons/Cyrene.icns',
+      tauriDefaultIconPath: '/repo/src-tauri/icons/icon.icns',
       logPath: '/Users/phoenix/Library/Logs/Cyrene-launcher.log'
     })
   })
@@ -22,6 +24,10 @@ describe('macOS launcher generator', () => {
 
     expect(script).toContain('npm run desktop:dev')
     expect(script).toContain('nohup')
+    expect(script).toContain('set -a; . ./.env; set +a')
+    expect(script).toContain('Cyrene already running')
+    expect(script).toContain("pgrep -f '[t]arget/debug/cyrene'")
+    expect(script).toContain('quit')
     expect(script).toContain('/repo')
     expect(script).toContain('Cyrene repo not found')
     expect(script).toContain('/tmp/Cyrene.log')
@@ -34,7 +40,8 @@ describe('macOS launcher generator', () => {
       ['Set', ':CFBundleName', 'Cyrene'],
       ['Set', ':CFBundleDisplayName', 'Cyrene'],
       ['Set', ':CFBundleIdentifier', 'local.cyrene.launcher'],
-      ['Set', ':CFBundleIconFile', 'Cyrene']
+      ['Set', ':CFBundleIconFile', 'Cyrene'],
+      ['Set', ':LSUIElement', 'true', 'bool']
     ])
   })
 

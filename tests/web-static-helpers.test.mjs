@@ -53,6 +53,14 @@ describe('web static helpers', () => {
     expect(css).toMatch(/\.control-action-icon\s*\{[\s\S]*?display:\s*block;/)
   })
 
+  it('reloads the memory panel after successful memory actions', () => {
+    const memoryPanel = readFileSync(new URL('../src/web/static/panels/memory-panel.js', import.meta.url), 'utf8')
+
+    expect(memoryPanel).toContain('function loadMemoryList(list)')
+    expect(memoryPanel).toMatch(/apiPost\(path\)\.then\(\(\) => \{\s*return loadMemoryList\(list\)/)
+    expect(memoryPanel).not.toContain("setIconControlButton(button, `${label} completed`, 'done')")
+  })
+
   it('keeps the empty state avatar-only and removes default trace/evolution UI tabs', () => {
     const html = readFileSync(new URL('../src/web/static/index.html', import.meta.url), 'utf8')
     const app = readFileSync(new URL('../src/web/static/app.js', import.meta.url), 'utf8')
@@ -74,6 +82,7 @@ describe('web static helpers', () => {
     const html = readFileSync(new URL('../src/web/static/index.html', import.meta.url), 'utf8')
     const app = readFileSync(new URL('../src/web/static/app.js', import.meta.url), 'utf8')
 
+    expect(html).toContain("document.documentElement.classList.add('desktop-shell')")
     expect(html).toContain('<main class="app-shell sidebar-collapsed" aria-label="Cyrene">')
     expect(html).toContain('id="sidebarToggle" class="icon-button icon-only" type="button" aria-label="Expand sidebar" aria-expanded="false" title="Expand sidebar"')
     expect(app).toContain('sidebarCollapsed: true')

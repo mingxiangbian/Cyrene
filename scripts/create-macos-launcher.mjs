@@ -24,6 +24,8 @@ export function resolveLauncherPaths(repoPath = process.cwd()) {
     appPath: join(home, 'Applications', `${APP_NAME}.app`),
     iconSource: join(resolvedRepoPath, 'src', 'web', 'static', 'assets', 'cyrene-cartoon-avatar.png'),
     iconName: `${APP_NAME}.icns`,
+    tauriIconPath: join(resolvedRepoPath, 'src-tauri', 'icons', `${APP_NAME}.icns`),
+    tauriDefaultIconPath: join(resolvedRepoPath, 'src-tauri', 'icons', 'icon.icns'),
     logPath: join(home, 'Library', 'Logs', 'Cyrene-launcher.log')
   }
 }
@@ -35,12 +37,14 @@ export function buildAppleScript({ repoPath, logPath }) {
     `mkdir -p ${shellQuote(logDir)}`,
     `if [ ! -d ${shellQuote(repoPath)} ]; then printf '[%s] Cyrene repo not found: %s\\n' "$(${dateCommand})" ${shellQuote(repoPath)} >> ${shellQuote(logPath)}; exit 1; fi`,
     `printf '\\n[%s] Launch requested\\n' "$(${dateCommand})" >> ${shellQuote(logPath)}`,
-    `cd ${shellQuote(repoPath)} && PATH="$HOME/.cargo/bin:/opt/homebrew/bin:/usr/local/bin:$PATH" nohup npm run desktop:dev >> ${shellQuote(logPath)} 2>&1 < /dev/null &`
+    `if pgrep -f ${shellQuote('[t]arget/debug/cyrene')} > /dev/null || pgrep -f ${shellQuote('[n]ode .*node_modules/.bin/tauri dev')} > /dev/null; then printf '[%s] Cyrene already running\\n' "$(${dateCommand})" >> ${shellQuote(logPath)}; exit 0; fi`,
+    `cd ${shellQuote(repoPath)} && if [ -f .env ]; then set -a; . ./.env; set +a; fi; PATH="$HOME/.cargo/bin:/opt/homebrew/bin:/usr/local/bin:$PATH" nohup npm run desktop:dev >> ${shellQuote(logPath)} 2>&1 < /dev/null &`
   ].join('; ')
 
   return [
     'on run',
     `  do shell script ${appleScriptString(shellCommand)}`,
+    '  quit',
     'end run',
     ''
   ].join('\n')
@@ -51,7 +55,8 @@ export function buildPlistBuddyCommands(appName, bundleIdentifier, iconBaseName)
     ['Set', ':CFBundleName', appName],
     ['Set', ':CFBundleDisplayName', appName],
     ['Set', ':CFBundleIdentifier', bundleIdentifier],
-    ['Set', ':CFBundleIconFile', iconBaseName]
+    ['Set', ':CFBundleIconFile', iconBaseName],
+    ['Set', ':LSUIElement', 'true', 'bool']
   ]
 }
 
@@ -109,6 +114,9 @@ export function createLauncher(options = {}) {
     const tempIconPath = join(tempDir, paths.iconName)
     execFileSync('iconutil', ['-c', 'icns', iconsetDir, '-o', tempIconPath], { stdio: 'ignore' })
     copyFileSync(tempIconPath, join(resourcesDir, paths.iconName))
+    mkdirSync(dirname(paths.tauriIconPath), { recursive: true })
+    copyFileSync(tempIconPath, paths.tauriIconPath)
+    copyFileSync(tempIconPath, paths.tauriDefaultIconPath)
 
     const plistPath = join(paths.appPath, 'Contents', 'Info.plist')
     for (const command of buildPlistBuddyCommands(APP_NAME, BUNDLE_IDENTIFIER, iconBaseName)) {
@@ -121,11 +129,11 @@ export function createLauncher(options = {}) {
   return paths.appPath
 }
 
-function runPlistBuddy(plistPath, [operation, key, value]) {
+function runPlistBuddy(plistPath, [operation, key, value, type = 'string']) {
   try {
     execFileSync('/usr/libexec/PlistBuddy', ['-c', `${operation} ${key} ${value}`, plistPath], { stdio: 'ignore' })
   } catch {
-    execFileSync('/usr/libexec/PlistBuddy', ['-c', `Add ${key} string ${value}`, plistPath], { stdio: 'ignore' })
+    execFileSync('/usr/libexec/PlistBuddy', ['-c', `Add ${key} ${type} ${value}`, plistPath], { stdio: 'ignore' })
   }
 }
 
