@@ -322,12 +322,13 @@ git commit -m "refactor: simplify desktop shell ui"
 - Create: `tests/launch-cwd.test.ts`
 - Modify: `tests/web-workspaces.test.ts`
 - Modify: `tests/web-server.test.ts`
+- Modify: `tests/main-cli.test.ts`
 - Modify: `src/launch-cwd.ts`
 - Modify: `src/web/workspaces.ts`
 - Modify: `src/web/server.ts`
 - Modify: `src/main.ts`
 
-- [ ] **Step 1: Write failing launch cwd test**
+- [x] **Step 1: Write failing launch cwd test**
 
 Create `tests/launch-cwd.test.ts`:
 
@@ -343,7 +344,7 @@ describe('resolveDefaultWebCwd', () => {
 })
 ```
 
-- [ ] **Step 2: Write failing workspace helper tests**
+- [x] **Step 2: Write failing workspace helper tests**
 
 Update `tests/web-workspaces.test.ts` expected behavior:
 
@@ -365,7 +366,7 @@ it('lists the root boundary and direct child directories only', async () => {
 
 Also update root/child path setup in the remaining workspace tests so files live under `root` and `root/project-a`, not `root/workspace`.
 
-- [ ] **Step 3: Write failing server storage split tests**
+- [x] **Step 3: Write failing server storage split tests**
 
 In `tests/web-server.test.ts`, add a focused test:
 
@@ -405,7 +406,7 @@ it('uses workspaceCwd for file boundary while keeping sessions in storage cwd', 
 
 Add `basename` to the `node:path` import.
 
-- [ ] **Step 4: Verify RED**
+- [x] **Step 4: Verify RED**
 
 Run:
 
@@ -415,7 +416,7 @@ npm test -- tests/launch-cwd.test.ts tests/web-workspaces.test.ts tests/web-serv
 
 Expected: FAIL because cwd still resolves through `<cwd>/workspace` and `startWebServer` has no `workspaceCwd`.
 
-- [ ] **Step 5: Implement boundary and storage split**
+- [x] **Step 5: Implement boundary and storage split**
 
 In `src/launch-cwd.ts`, replace the current logic with:
 
@@ -511,7 +512,7 @@ const server = await startWebServer({
 })
 ```
 
-- [ ] **Step 6: Verify GREEN**
+- [x] **Step 6: Verify GREEN**
 
 Run:
 
@@ -521,7 +522,7 @@ npm test -- tests/launch-cwd.test.ts tests/web-workspaces.test.ts tests/web-serv
 
 Expected: PASS.
 
-- [ ] **Step 7: Commit boundary/storage split**
+- [x] **Step 7: Commit boundary/storage split**
 
 Run:
 

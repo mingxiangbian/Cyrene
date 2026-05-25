@@ -1,6 +1,6 @@
 import { mkdir, mkdtemp, readFile, realpath, rm, symlink, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
-import { join } from 'node:path'
+import { basename, join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { createEvolutionProposal } from '../src/evolution/proposal-store.js'
 import type { CallModelInput, ModelResponse } from '../src/llm-client.js'
@@ -246,9 +246,10 @@ describe('startWebServer', () => {
 
   it('lists the workspace root and direct child workspaces', async () => {
     const cwd = await createTempCwd()
-    await mkdir(join(cwd, 'workspace', 'project-b'))
-    await mkdir(join(cwd, 'workspace', 'project-a'))
-    await writeFile(join(cwd, 'workspace', 'README.md'), '# Root\n')
+    const rootName = basename(cwd)
+    await mkdir(join(cwd, 'project-b'))
+    await mkdir(join(cwd, 'project-a'))
+    await writeFile(join(cwd, 'README.md'), '# Root\n')
     const server = await startWebServer({
       cwd,
       host: '127.0.0.1',
@@ -262,17 +263,18 @@ describe('startWebServer', () => {
     expect(response.status).toBe(200)
     expect(await response.json()).toEqual({
       workspaces: [
-        { id: '', label: 'workspace', relativePath: 'workspace' },
-        { id: 'project-a', label: 'workspace/project-a', relativePath: 'workspace/project-a' },
-        { id: 'project-b', label: 'workspace/project-b', relativePath: 'workspace/project-b' }
+        { id: '', label: rootName, relativePath: '.' },
+        { id: 'project-a', label: `${rootName}/project-a`, relativePath: 'project-a' },
+        { id: 'project-b', label: `${rootName}/project-b`, relativePath: 'project-b' }
       ]
     })
   })
 
-  it('returns 400 for GET /api/workspaces when workspace is missing', async () => {
-    const cwd = await createTempCwdWithoutWorkspace()
+  it('returns 400 for GET /api/workspaces when the workspace boundary is missing', async () => {
+    const cwd = await createTempCwd()
     const server = await startWebServer({
       cwd,
+      workspaceCwd: join(cwd, 'missing'),
       host: '127.0.0.1',
       port: 0,
       callModel: async (): Promise<ModelResponse> => ({ content: 'unused', toolCalls: [] })
@@ -283,14 +285,72 @@ describe('startWebServer', () => {
     const body = (await response.json()) as { error: string }
 
     expect(response.status).toBe(400)
-    expect(body.error).toContain('workspace directory does not exist')
+    expect(body.error).toContain('workspace root does not exist')
+  })
+
+  it('uses workspaceCwd for files while keeping sessions under the storage cwd', async () => {
+    const storageCwd = await createTempCwd()
+    const workspaceCwd = await createTempCwd()
+    const workspaceRootName = basename(workspaceCwd)
+    await mkdir(join(workspaceCwd, 'life'))
+    await writeFile(join(workspaceCwd, 'life', 'README.md'), '# Life\n')
+    await mkdir(join(storageCwd, '.cyrene', 'sessions'), { recursive: true })
+    await writeFile(
+      join(storageCwd, '.cyrene', 'sessions', 'index.json'),
+      `${JSON.stringify([
+        {
+          id: 'stored-web-session',
+          mode: 'web',
+          title: 'Stored session',
+          preview: 'storage root should load',
+          createdAt: '2026-05-24T00:00:00.000Z',
+          updatedAt: '2026-05-24T00:00:00.000Z',
+          model: 'test-model',
+          pinned: false
+        }
+      ])}\n`,
+      'utf8'
+    )
+    const server = await startWebServer({
+      cwd: storageCwd,
+      workspaceCwd,
+      host: '127.0.0.1',
+      port: 0,
+      callModel: async (): Promise<ModelResponse> => ({ content: 'unused', toolCalls: [] })
+    })
+    servers.push(server)
+
+    const [workspacesResponse, markdownResponse, sessionsResponse] = await Promise.all([
+      fetch(`${server.url}/api/workspaces`),
+      fetch(`${server.url}/api/workspaces/life/markdown/README.md`),
+      fetch(`${server.url}/api/sessions`)
+    ])
+
+    expect(workspacesResponse.status).toBe(200)
+    await expect(workspacesResponse.json()).resolves.toEqual({
+      workspaces: [
+        { id: '', label: workspaceRootName, relativePath: '.' },
+        { id: 'life', label: `${workspaceRootName}/life`, relativePath: 'life' }
+      ]
+    })
+    expect(markdownResponse.status).toBe(200)
+    await expect(markdownResponse.json()).resolves.toEqual({ file: { id: 'README.md', content: '# Life\n' } })
+    expect(sessionsResponse.status).toBe(200)
+    await expect(sessionsResponse.json()).resolves.toEqual({
+      sessions: [
+        expect.objectContaining({
+          id: 'stored-web-session',
+          title: 'Stored session'
+        })
+      ]
+    })
   })
 
   it('lists and reads Markdown for a selected child workspace', async () => {
     const cwd = await createTempCwd()
-    await mkdir(join(cwd, 'workspace', 'project-a'))
-    await writeFile(join(cwd, 'workspace', 'project-a', 'README.md'), '# Project A\n')
-    await writeFile(join(cwd, 'workspace', 'project-a', 'notes.txt'), 'ignore me\n')
+    await mkdir(join(cwd, 'project-a'))
+    await writeFile(join(cwd, 'project-a', 'README.md'), '# Project A\n')
+    await writeFile(join(cwd, 'project-a', 'notes.txt'), 'ignore me\n')
     const server = await startWebServer({
       cwd,
       host: '127.0.0.1',
@@ -310,7 +370,7 @@ describe('startWebServer', () => {
 
   it('lists and reads Markdown for the @root workspace', async () => {
     const cwd = await createTempCwd()
-    await writeFile(join(cwd, 'workspace', 'README.md'), '# Workspace Root\n')
+    await writeFile(join(cwd, 'README.md'), '# Workspace Root\n')
     const server = await startWebServer({
       cwd,
       host: '127.0.0.1',
@@ -348,12 +408,12 @@ describe('startWebServer', () => {
 
   it('serves a workspace PNG asset from a child workspace', async () => {
     const cwd = await createTempCwd()
-    await mkdir(join(cwd, 'workspace', 'project-a', 'generated-images'), { recursive: true })
+    await mkdir(join(cwd, 'project-a', 'generated-images'), { recursive: true })
     const expectedBytes = Buffer.from([
       0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a,
       0x00, 0x00, 0x00, 0x0d
     ])
-    const assetPath = join(cwd, 'workspace', 'project-a', 'generated-images', 'one.png')
+    const assetPath = join(cwd, 'project-a', 'generated-images', 'one.png')
     await writeFile(assetPath, expectedBytes)
     const server = await startWebServer({
       cwd,
@@ -373,9 +433,9 @@ describe('startWebServer', () => {
 
   it('serves a workspace JPEG asset from a child workspace', async () => {
     const cwd = await createTempCwd()
-    await mkdir(join(cwd, 'workspace', 'project-a', 'images'), { recursive: true })
+    await mkdir(join(cwd, 'project-a', 'images'), { recursive: true })
     const expectedBytes = Buffer.from([0xff, 0xd8, 0xff, 0xe0, 0x00, 0x10])
-    const assetPath = join(cwd, 'workspace', 'project-a', 'images', 'meme.jpeg')
+    const assetPath = join(cwd, 'project-a', 'images', 'meme.jpeg')
     await writeFile(assetPath, expectedBytes)
     const server = await startWebServer({
       cwd,
@@ -412,7 +472,7 @@ describe('startWebServer', () => {
 
   it('rejects non-image workspace assets', async () => {
     const cwd = await createTempCwd()
-    await writeFile(join(cwd, 'workspace', 'notes.txt'), 'not an image')
+    await writeFile(join(cwd, 'notes.txt'), 'not an image')
     const server = await startWebServer({
       cwd,
       host: '127.0.0.1',
@@ -931,7 +991,7 @@ describe('startWebServer', () => {
 
   it('streams tool events before the final response', async () => {
     const cwd = await createTempCwd()
-    await writeFile(join(cwd, 'workspace', 'package.json'), '{"name":"web-prism-console-test"}\n')
+    await writeFile(join(cwd, 'package.json'), '{"name":"web-prism-console-test"}\n')
     const callModel = vi.fn(async (): Promise<ModelResponse> => {
       if (callModel.mock.calls.length === 1) {
         return {
@@ -978,8 +1038,8 @@ describe('startWebServer', () => {
 
   it('uses the selected workspace as the Web agent tool cwd', async () => {
     const cwd = await createTempCwd()
-    await mkdir(join(cwd, 'workspace', 'project-a'))
-    await writeFile(join(cwd, 'workspace', 'project-a', 'README.md'), '# Project A\n')
+    await mkdir(join(cwd, 'project-a'))
+    await writeFile(join(cwd, 'project-a', 'README.md'), '# Project A\n')
     const modelMessages: CallModelInput['messages'][] = []
     const callModel = vi.fn(async (input: CallModelInput): Promise<ModelResponse> => {
       modelMessages.push(input.messages.map((message) => ({ ...message })))
@@ -1028,8 +1088,8 @@ describe('startWebServer', () => {
 
   it('persists selected workspace ids and rejects cross-workspace resume', async () => {
     const cwd = await createTempCwd()
-    await mkdir(join(cwd, 'workspace', 'project-a'))
-    await mkdir(join(cwd, 'workspace', 'project-b'))
+    await mkdir(join(cwd, 'project-a'))
+    await mkdir(join(cwd, 'project-b'))
     const callModel = vi.fn(async (): Promise<ModelResponse> => ({ content: 'workspace answer', toolCalls: [] }))
     const server = await startWebServer({
       cwd,
@@ -1931,13 +1991,6 @@ async function startServer(
 }
 
 async function createTempCwd(): Promise<string> {
-  const cwd = await realpath(await mkdtemp(join(tmpdir(), 'cyrene-web-server-')))
-  await mkdir(join(cwd, 'workspace'))
-  tempDirs.push(cwd)
-  return cwd
-}
-
-async function createTempCwdWithoutWorkspace(): Promise<string> {
   const cwd = await realpath(await mkdtemp(join(tmpdir(), 'cyrene-web-server-')))
   tempDirs.push(cwd)
   return cwd
