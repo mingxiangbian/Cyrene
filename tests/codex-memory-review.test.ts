@@ -336,6 +336,35 @@ describe('Codex pending memory review', () => {
     await expect(readFile(join(outside, 'MEMORY.md'), 'utf8')).rejects.toMatchObject({ code: 'ENOENT' })
   })
 
+  it('rejects rendering projections when the projections path is a file', async () => {
+    const memoryRoot = await createTempDir('cyrene-review-memory-root-')
+    await writeFile(join(memoryRoot, 'projections'), 'not a directory', 'utf8')
+
+    await expect(renderMemoryProjectionsFromRoot(memoryRoot)).rejects.toThrow(/non-directory memory projection path/)
+  })
+
+  it('rejects promotion before mutation when the projections path is a file', async () => {
+    const home = await createTempDir('cyrene-review-home-')
+    vi.stubEnv('HOME', home)
+    const cwd = await createTempDir('cyrene-review-project-')
+    const candidate = createPending()
+    const memoryRoot = await seedPending(cwd, [candidate])
+    await writeFile(join(memoryRoot, 'projections'), 'not a directory', 'utf8')
+
+    await expect(
+      promoteCodexPendingMemory({
+        cwd,
+        id: candidate.id,
+        reviewHash: reviewHashForPendingMemory(candidate),
+        now: '2026-05-25T01:00:00.000Z'
+      })
+    ).rejects.toThrow(/non-directory memory projection path/)
+
+    await expect(readFile(join(memoryRoot, 'index.jsonl'), 'utf8')).rejects.toMatchObject({ code: 'ENOENT' })
+    await expect(readFile(join(memoryRoot, 'events.jsonl'), 'utf8')).rejects.toMatchObject({ code: 'ENOENT' })
+    await expect(readFile(join(memoryRoot, 'pending.jsonl'), 'utf8')).resolves.toContain(candidate.content)
+  })
+
   it('rejects rendering projection output file symlinks without changing outside files', async () => {
     const memoryRoot = await createTempDir('cyrene-review-memory-root-')
     const outside = await createTempDir('cyrene-review-projection-file-outside-')
@@ -373,6 +402,37 @@ describe('Codex pending memory review', () => {
     await expect(readFile(join(memoryRoot, 'index.jsonl'), 'utf8')).rejects.toMatchObject({ code: 'ENOENT' })
     await expect(readFile(join(memoryRoot, 'events.jsonl'), 'utf8')).rejects.toMatchObject({ code: 'ENOENT' })
     await expect(readFile(outsideTarget, 'utf8')).resolves.toBe('outside original\n')
+    await expect(readFile(join(memoryRoot, 'pending.jsonl'), 'utf8')).resolves.toContain(candidate.content)
+  })
+
+  it('rejects rendering projection targets that are directories', async () => {
+    const memoryRoot = await createTempDir('cyrene-review-memory-root-')
+    await mkdir(join(memoryRoot, 'projections'))
+    await mkdir(join(memoryRoot, 'projections', 'MEMORY.md'))
+
+    await expect(renderMemoryProjectionsFromRoot(memoryRoot)).rejects.toThrow(/non-file memory projection path/)
+  })
+
+  it('rejects promotion before mutation when the root projection target is a directory', async () => {
+    const home = await createTempDir('cyrene-review-home-')
+    vi.stubEnv('HOME', home)
+    const cwd = await createTempDir('cyrene-review-project-')
+    const candidate = createPending()
+    const memoryRoot = await seedPending(cwd, [candidate])
+    await mkdir(join(memoryRoot, 'projections'))
+    await mkdir(join(memoryRoot, 'MEMORY.md'))
+
+    await expect(
+      promoteCodexPendingMemory({
+        cwd,
+        id: candidate.id,
+        reviewHash: reviewHashForPendingMemory(candidate),
+        now: '2026-05-25T01:00:00.000Z'
+      })
+    ).rejects.toThrow(/non-file memory projection path/)
+
+    await expect(readFile(join(memoryRoot, 'index.jsonl'), 'utf8')).rejects.toMatchObject({ code: 'ENOENT' })
+    await expect(readFile(join(memoryRoot, 'events.jsonl'), 'utf8')).rejects.toMatchObject({ code: 'ENOENT' })
     await expect(readFile(join(memoryRoot, 'pending.jsonl'), 'utf8')).resolves.toContain(candidate.content)
   })
 
