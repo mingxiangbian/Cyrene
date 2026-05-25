@@ -1,5 +1,5 @@
 import { execFile } from 'node:child_process'
-import { mkdtemp, rm } from 'node:fs/promises'
+import { mkdtemp, readFile, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { promisify } from 'node:util'
@@ -113,6 +113,13 @@ describe('Cyrene MCP server', () => {
         .content[0]?.text ?? '{}'
     )
     expect(promoteJson.result.action).toBe('not_found')
+  })
+
+  it('requires explicit user consent in memory review tool descriptions', async () => {
+    const source = await readFile(new URL('../src/mcp/mcp-server.ts', import.meta.url), 'utf8')
+
+    expect(source).toContain('promote only after explicit user approval')
+    expect(source).toContain('reject only after explicit user rejection')
   })
 
   it('accepts mcp-server as a local CLI command without treating it as a prompt', async () => {

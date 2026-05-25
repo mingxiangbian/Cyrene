@@ -67,7 +67,8 @@ export function createCyreneMcpServer(options: { cwd: string }): McpServer {
   server.registerTool(
     'cyrene_memory_promote',
     {
-      description: 'Promote a pending Cyrene memory candidate after hash-checked Codex review.',
+      description:
+        'Use this tool to promote only after explicit user approval of a pending Cyrene memory candidate and hash-checked Codex review.',
       inputSchema: memoryReviewDecisionInputSchema
     },
     async (input) => handleMemoryPromote(input, options.cwd)
@@ -76,7 +77,8 @@ export function createCyreneMcpServer(options: { cwd: string }): McpServer {
   server.registerTool(
     'cyrene_memory_reject',
     {
-      description: 'Reject a pending Cyrene memory candidate after hash-checked Codex review.',
+      description:
+        'Use this tool to reject only after explicit user rejection of a pending Cyrene memory candidate and hash-checked Codex review.',
       inputSchema: memoryReviewDecisionInputSchema
     },
     async (input) => handleMemoryReject(input, options.cwd)
