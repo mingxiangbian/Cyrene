@@ -175,6 +175,11 @@ async function routeRequest(
     return
   }
 
+  if (request.method === 'GET' && url.pathname === '/api/health') {
+    writeJson(response, 200, { ok: true, service: 'cyrene-web' })
+    return
+  }
+
   if (request.method === 'POST' && url.pathname === '/api/runs') {
     await createRun(request, response, context)
     return

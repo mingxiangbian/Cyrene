@@ -43,6 +43,17 @@ function activeMemoryLine(input: { id: string; content: string; normalizedKey: s
 }
 
 describe('main CLI', () => {
+  it('declares desktop Web and Tauri scripts', async () => {
+    const manifest = JSON.parse(await readFile('package.json', 'utf8')) as {
+      scripts: Record<string, string>
+      devDependencies?: Record<string, string>
+    }
+
+    expect(manifest.scripts['desktop:web']).toBe('tsx src/main.ts --web --host 127.0.0.1')
+    expect(manifest.scripts['desktop:dev']).toContain('tauri dev')
+    expect(manifest.devDependencies?.['@tauri-apps/cli']).toBe('^2.11.2')
+  })
+
   it('rejects --web with a prompt', async () => {
     try {
       await execFileAsync(process.execPath, ['node_modules/tsx/dist/cli.mjs', 'src/main.ts', '--web', 'hello'], {

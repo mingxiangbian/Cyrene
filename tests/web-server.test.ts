@@ -126,6 +126,18 @@ describe('startWebServer', () => {
     expect(body).not.toContain('>Change</button>')
   })
 
+  it('reports health for desktop readiness polling', async () => {
+    const server = await startServer()
+
+    const response = await fetch(`${server.url}/api/health`)
+
+    expect(response.status).toBe(200)
+    await expect(response.json()).resolves.toEqual({
+      ok: true,
+      service: 'cyrene-web'
+    })
+  })
+
   it('serves the Prism visual system from GET /static/styles.css', async () => {
     const server = await startServer()
 

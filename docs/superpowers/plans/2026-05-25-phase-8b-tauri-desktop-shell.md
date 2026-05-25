@@ -541,7 +541,7 @@ git commit -m "feat: default web boundary to home"
 - Modify: `src/web/server.ts`
 - Modify: `package.json`
 
-- [ ] **Step 1: Write failing health endpoint test**
+- [x] **Step 1: Write failing health endpoint test**
 
 In `tests/web-server.test.ts`, add:
 
@@ -559,7 +559,7 @@ it('reports health for desktop readiness polling', async () => {
 })
 ```
 
-- [ ] **Step 2: Write failing desktop script contract test**
+- [x] **Step 2: Write failing desktop script contract test**
 
 In `tests/main-cli.test.ts`, add a script contract test:
 
@@ -576,7 +576,7 @@ it('declares desktop Web and Tauri scripts', async () => {
 })
 ```
 
-- [ ] **Step 3: Verify RED**
+- [x] **Step 3: Verify RED**
 
 Run:
 
@@ -586,7 +586,7 @@ npm test -- tests/web-server.test.ts tests/main-cli.test.ts
 
 Expected: FAIL because `/api/health` and desktop scripts do not exist.
 
-- [ ] **Step 4: Implement health route and scripts**
+- [x] **Step 4: Implement health route and scripts**
 
 In `src/web/server.ts`, add before other API routes:
 
@@ -610,7 +610,7 @@ Install CLI:
 npm install -D @tauri-apps/cli@2.11.2
 ```
 
-- [ ] **Step 5: Verify GREEN**
+- [x] **Step 5: Verify GREEN**
 
 Run:
 
@@ -620,7 +620,7 @@ npm test -- tests/web-server.test.ts tests/main-cli.test.ts
 
 Expected: PASS.
 
-- [ ] **Step 6: Commit health/scripts**
+- [x] **Step 6: Commit health/scripts**
 
 Run:
 
