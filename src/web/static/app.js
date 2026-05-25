@@ -76,7 +76,7 @@ const state = {
   continuity: null,
   resizingLeft: false,
   inspectorTab: 'tools',
-  sidebarCollapsed: false,
+  sidebarCollapsed: true,
   inspectorOpen: false,
   contextUsageDetailsVisible: false,
   thinkingMode: DEFAULT_MODEL_CONTEXT.thinkingMode,
@@ -99,6 +99,7 @@ const markdownRequests = {
 void loadWorkspaces()
 void loadSessions()
 setTheme(state.theme)
+setSidebarCollapsed(state.sidebarCollapsed)
 renderThinkingModeControl()
 renderSendButton(false)
 updateChatLayoutState()

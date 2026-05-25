@@ -14,6 +14,7 @@
 
 - Modify: `src/web/static/index.html`
   - 移除空状态标题/说明。
+  - 默认新会话以 collapsed sidebar rail + avatar-only composer 展示。
   - 移除默认 `Trace` / `Evolution` tabs。
   - 移除默认 sidebar 底部 workspace selector markup。
   - 保留 composer、Think mode、context ring、send icon。
@@ -753,7 +754,7 @@ git commit -m "feat: add tauri desktop shell scaffold"
 **Files:**
 - Verify: all modified files
 
-- [ ] **Step 1: Typecheck**
+- [x] **Step 1: Typecheck**
 
 Run:
 
@@ -763,7 +764,7 @@ npm run typecheck
 
 Expected: PASS.
 
-- [ ] **Step 2: Test suite**
+- [x] **Step 2: Test suite**
 
 Run:
 
@@ -773,7 +774,7 @@ npm test
 
 Expected: PASS.
 
-- [ ] **Step 3: Start Web app for Browser QA**
+- [x] **Step 3: Start Web app for Browser QA**
 
 Run:
 
@@ -791,12 +792,13 @@ Browser checks:
 
 - Empty state shows avatar + composer only.
 - No heading/body copy under the avatar.
+- Initial left sidebar is collapsed to the avatar rail.
 - Sidebar shows brand, new chat, session history; no bottom workspace selector.
 - Inspector tabs show `Context`, `Tools`, `Memory`, `Affect`; no `Trace` or `Evolution`.
 - Send button icon is readable in light mode.
 - Send button icon is readable in dark mode.
 
-- [ ] **Step 4: Start Tauri dev shell**
+- [x] **Step 4: Start Tauri dev shell**
 
 Run:
 
@@ -810,16 +812,18 @@ Expected:
 - Window loads `http://127.0.0.1:4317`.
 - Tauri dev command starts the Web server through `desktop:web`.
 
-- [ ] **Step 5: Computer Use desktop smoke**
+- [x] **Step 5: Desktop smoke**
 
-Computer Use checks:
+Desktop checks:
 
 - Desktop window is visible.
 - Web UI style matches Browser Web UI.
 - Dark mode send icon remains readable.
 - Closing the dev shell terminates the local Web process.
 
-- [ ] **Step 6: Final status**
+Note: Computer Use `list_apps` does not expose the Tauri dev binary because it has no bundle identifier in this dev mode. Desktop visibility was verified through the macOS window list and window-specific screenshot capture for owner `cyrene`, title `Cyrene`.
+
+- [x] **Step 6: Final status**
 
 Run:
 

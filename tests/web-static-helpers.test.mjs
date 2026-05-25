@@ -70,6 +70,16 @@ describe('web static helpers', () => {
     expect(app).not.toContain('<p>Run status and tool activity will stream here as the agent responds.</p>')
   })
 
+  it('starts new chats with the left sidebar collapsed', () => {
+    const html = readFileSync(new URL('../src/web/static/index.html', import.meta.url), 'utf8')
+    const app = readFileSync(new URL('../src/web/static/app.js', import.meta.url), 'utf8')
+
+    expect(html).toContain('<main class="app-shell sidebar-collapsed" aria-label="Cyrene">')
+    expect(html).toContain('id="sidebarToggle" class="icon-button icon-only" type="button" aria-label="Expand sidebar" aria-expanded="false" title="Expand sidebar"')
+    expect(app).toContain('sidebarCollapsed: true')
+    expect(app).toContain('setSidebarCollapsed(state.sidebarCollapsed)')
+  })
+
   it('escapes Markdown preview content while rendering supported blocks', () => {
     const html = renderMarkdownHtml([
       '# <img src=x onerror=alert(1)>',
