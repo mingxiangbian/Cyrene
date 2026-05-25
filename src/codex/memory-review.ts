@@ -122,11 +122,36 @@ export interface CodexPendingMemoryRejectResult {
 export function reviewHashForPendingMemory(candidate: PendingMemory): string {
   const payload = {
     id: candidate.id,
+    domain: candidate.domain,
+    type: candidate.type,
+    strength: candidate.strength,
+    scope: candidate.scope,
+    status: candidate.status,
     content: candidate.content,
     normalizedKey: candidate.normalizedKey,
-    evidence: candidate.evidence,
-    scores: candidate.scores,
-    lastSeenAt: candidate.lastSeenAt
+    evidence: candidate.evidence.map((entry) => ({
+      runId: entry.runId ?? null,
+      messageIds: entry.messageIds ?? null,
+      traceRefs: entry.traceRefs ?? null,
+      quote: entry.quote ?? null,
+      summary: entry.summary ?? null
+    })),
+    source: candidate.source,
+    scores: {
+      evidenceStrength: candidate.scores.evidenceStrength,
+      stability: candidate.scores.stability,
+      usefulness: candidate.scores.usefulness,
+      safety: candidate.scores.safety,
+      sensitivity: candidate.scores.sensitivity
+    },
+    seenCount: candidate.seenCount,
+    firstSeenAt: candidate.firstSeenAt,
+    lastSeenAt: candidate.lastSeenAt,
+    promoteAfter: candidate.promoteAfter ?? null,
+    expiresAt: candidate.expiresAt,
+    userConfirmed: candidate.userConfirmed ?? null,
+    tags: candidate.tags,
+    conflictsWith: candidate.conflictsWith ?? null
   }
   return createHash('sha256').update(JSON.stringify(payload)).digest('hex')
 }

@@ -247,6 +247,31 @@ describe('Codex pending memory review', () => {
     expect(pending).toContain(candidate.content)
   })
 
+  it('returns conflict when review-significant fields changed after hash review', async () => {
+    const home = await createTempDir('cyrene-review-home-')
+    vi.stubEnv('HOME', home)
+    const cwd = await createTempDir('cyrene-review-project-')
+    const reviewedCandidate = createPending()
+    const staleReviewHash = reviewHashForPendingMemory(reviewedCandidate)
+    const changedCandidate = createPending({
+      strength: 'soft',
+      scope: 'global'
+    })
+    const memoryRoot = await seedPending(cwd, [changedCandidate])
+
+    const result = await promoteCodexPendingMemory({
+      cwd,
+      id: changedCandidate.id,
+      reviewHash: staleReviewHash,
+      now: '2026-05-25T01:00:00.000Z'
+    })
+
+    expect(result.result.action).toBe('conflict')
+    await expect(readFile(join(memoryRoot, 'index.jsonl'), 'utf8')).rejects.toMatchObject({ code: 'ENOENT' })
+    const pending = await readFile(join(memoryRoot, 'pending.jsonl'), 'utf8')
+    expect(pending).toContain(changedCandidate.content)
+  })
+
   it('blocks promote when validator rejects the candidate', async () => {
     const home = await createTempDir('cyrene-review-home-')
     vi.stubEnv('HOME', home)
@@ -288,6 +313,27 @@ describe('Codex pending memory review', () => {
     await writeFile(memoryRoot, 'not a directory', 'utf8')
 
     await expect(renderMemoryProjectionsFromRoot(memoryRoot)).rejects.toThrow(/non-directory memory path/)
+  })
+
+  it('rejects promotion projection writes through a symlinked projections directory', async () => {
+    const home = await createTempDir('cyrene-review-home-')
+    vi.stubEnv('HOME', home)
+    const cwd = await createTempDir('cyrene-review-project-')
+    const outside = await createTempDir('cyrene-review-projections-outside-')
+    const candidate = createPending()
+    const memoryRoot = await seedPending(cwd, [candidate])
+    await symlink(outside, join(memoryRoot, 'projections'))
+
+    await expect(
+      promoteCodexPendingMemory({
+        cwd,
+        id: candidate.id,
+        reviewHash: reviewHashForPendingMemory(candidate),
+        now: '2026-05-25T01:00:00.000Z'
+      })
+    ).rejects.toThrow(/projection symlink/)
+
+    await expect(readFile(join(outside, 'MEMORY.md'), 'utf8')).rejects.toMatchObject({ code: 'ENOENT' })
   })
 
   it('returns a compact pending review notice', async () => {

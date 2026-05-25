@@ -1,5 +1,5 @@
-import { mkdir, writeFile } from 'node:fs/promises'
-import { join } from 'node:path'
+import { lstat, mkdir, realpath, writeFile } from 'node:fs/promises'
+import { isAbsolute, join, relative } from 'node:path'
 import { ensureMemoryRoot } from './paths.js'
 import { ensureWritableMemoryRootPath, readActiveMemories, readActiveMemoriesFromRoot } from './memory-store.js'
 import type { CyreneMemory } from './types.js'
@@ -19,8 +19,7 @@ export async function renderMemoryProjectionsFromRoot(memoryRoot: string): Promi
 }
 
 async function writeMemoryProjections(root: string, memories: CyreneMemory[]): Promise<void> {
-  const projectionsDir = join(root, 'projections')
-  await mkdir(projectionsDir, { recursive: true })
+  const projectionsDir = await ensureSafeGeneratedDirectory(root, 'projections')
 
   const overall = formatMemoryProjection(memories, 'overall')
   await Promise.all([
@@ -30,6 +29,49 @@ async function writeMemoryProjections(root: string, memories: CyreneMemory[]): P
     writeFile(join(projectionsDir, 'AFFECT.md'), formatMemoryProjection(memories, 'affect'), 'utf8'),
     writeFile(join(root, 'MEMORY.md'), overall, 'utf8')
   ])
+}
+
+async function ensureSafeGeneratedDirectory(root: string, dirname: string): Promise<string> {
+  const dirPath = join(root, dirname)
+  try {
+    return await getSafeGeneratedDirectory(root, dirPath)
+  } catch (error) {
+    if (!isFileErrorCode(error, 'ENOENT')) {
+      throw error
+    }
+  }
+
+  await mkdir(dirPath).catch((error: unknown) => {
+    if (!isFileErrorCode(error, 'EEXIST')) {
+      throw error
+    }
+  })
+  return getSafeGeneratedDirectory(root, dirPath)
+}
+
+async function getSafeGeneratedDirectory(root: string, dirPath: string): Promise<string> {
+  const stats = await lstat(dirPath)
+  if (stats.isSymbolicLink()) {
+    throw new Error(`Refusing to use memory projection symlink: ${dirPath}`)
+  }
+  if (!stats.isDirectory()) {
+    throw new Error(`Refusing to use non-directory memory projection path: ${dirPath}`)
+  }
+
+  const dirRealPath = await realpath(dirPath)
+  if (!isPathInside(root, dirRealPath)) {
+    throw new Error(`Refusing to use memory projection path outside memory root: ${dirPath}`)
+  }
+  return dirRealPath
+}
+
+function isPathInside(parent: string, child: string): boolean {
+  const path = relative(parent, child)
+  return path === '' || (!path.startsWith('..') && !isAbsolute(path))
+}
+
+function isFileErrorCode(error: unknown, code: string): boolean {
+  return error instanceof Error && 'code' in error && error.code === code
 }
 
 export function formatMemoryProjection(
