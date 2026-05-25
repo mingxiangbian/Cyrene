@@ -15,7 +15,7 @@
 - Create: `scripts/create-macos-launcher.mjs`
   - 导出纯函数用于测试 AppleScript / plist patch / iconset plan。
   - CLI 主流程生成 `/Users/phoenix/Applications/Cyrene.app`。
-- Create: `tests/macos-launcher.test.ts`
+- Create: `tests/macos-launcher.test.mjs`
   - TDD 覆盖 launcher script 的关键 contract。
 - Modify: `package.json`
   - 增加 `launcher:create` script，便于以后重新生成 app。
@@ -25,12 +25,12 @@
 ## Task 1: Script Contract Tests
 
 **Files:**
-- Create: `tests/macos-launcher.test.ts`
+- Create: `tests/macos-launcher.test.mjs`
 - Create: `scripts/create-macos-launcher.mjs`
 
-- [ ] **Step 1: Write failing tests**
+- [x] **Step 1: Write failing tests**
 
-Create `tests/macos-launcher.test.ts` with tests that import:
+Create `tests/macos-launcher.test.mjs` with tests that import:
 
 ```ts
 import {
@@ -57,17 +57,17 @@ expect(buildPlistBuddyCommands('Cyrene', 'local.cyrene.launcher', 'Cyrene')).toC
 expect(buildIconsetEntries()).toContainEqual({ name: 'icon_512x512@2x.png', pixels: 1024 })
 ```
 
-- [ ] **Step 2: Verify RED**
+- [x] **Step 2: Verify RED**
 
 Run:
 
 ```bash
-npm test -- tests/macos-launcher.test.ts
+npm test -- tests/macos-launcher.test.mjs
 ```
 
 Expected: FAIL because `scripts/create-macos-launcher.mjs` does not exist.
 
-- [ ] **Step 3: Add minimal script exports**
+- [x] **Step 3: Add minimal script exports**
 
 Create `scripts/create-macos-launcher.mjs` with exported pure helpers:
 
@@ -78,12 +78,12 @@ export function buildPlistBuddyCommands(appName, bundleIdentifier, iconBaseName)
 export function buildIconsetEntries() { ... }
 ```
 
-- [ ] **Step 4: Verify GREEN**
+- [x] **Step 4: Verify GREEN**
 
 Run:
 
 ```bash
-npm test -- tests/macos-launcher.test.ts
+npm test -- tests/macos-launcher.test.mjs
 ```
 
 Expected: PASS.
@@ -94,9 +94,9 @@ Expected: PASS.
 - Modify: `scripts/create-macos-launcher.mjs`
 - Modify: `package.json`
 
-- [ ] **Step 1: Write failing CLI/package tests**
+- [x] **Step 1: Write failing CLI/package tests**
 
-Extend `tests/macos-launcher.test.ts`:
+Extend `tests/macos-launcher.test.mjs`:
 
 ```ts
 const pkg = JSON.parse(await readFile(new URL('../package.json', import.meta.url), 'utf8'))
@@ -105,17 +105,17 @@ expect(buildAppleScript({ repoPath: '/repo', logPath: '/tmp/Cyrene.log' })).toCo
 expect(buildAppleScript({ repoPath: '/repo', logPath: '/tmp/Cyrene.log' })).toContain('/tmp/Cyrene.log')
 ```
 
-- [ ] **Step 2: Verify RED**
+- [x] **Step 2: Verify RED**
 
 Run:
 
 ```bash
-npm test -- tests/macos-launcher.test.ts
+npm test -- tests/macos-launcher.test.mjs
 ```
 
 Expected: FAIL because `launcher:create` is missing and AppleScript does not yet include all runtime checks.
 
-- [ ] **Step 3: Implement CLI generation**
+- [x] **Step 3: Implement CLI generation**
 
 In `scripts/create-macos-launcher.mjs`, add `createLauncher()` and direct-run detection:
 
@@ -142,12 +142,12 @@ In `package.json`, add:
 "launcher:create": "node scripts/create-macos-launcher.mjs"
 ```
 
-- [ ] **Step 4: Verify GREEN**
+- [x] **Step 4: Verify GREEN**
 
 Run:
 
 ```bash
-npm test -- tests/macos-launcher.test.ts
+npm test -- tests/macos-launcher.test.mjs
 ```
 
 Expected: PASS.
@@ -157,7 +157,7 @@ Expected: PASS.
 **Files:**
 - Generate: `/Users/phoenix/Applications/Cyrene.app`
 
-- [ ] **Step 1: Generate app**
+- [x] **Step 1: Generate app**
 
 Run:
 
@@ -171,7 +171,7 @@ Expected output includes:
 Created /Users/phoenix/Applications/Cyrene.app
 ```
 
-- [ ] **Step 2: Verify app bundle structure**
+- [x] **Step 2: Verify app bundle structure**
 
 Run:
 
@@ -193,7 +193,7 @@ Expected:
 - Verify: `/Users/phoenix/Applications/Cyrene.app`
 - Verify: `~/Library/Logs/Cyrene-launcher.log`
 
-- [ ] **Step 1: Ensure clean port**
+- [x] **Step 1: Ensure clean port**
 
 Run:
 
@@ -203,7 +203,7 @@ lsof -nP -iTCP:4317 -sTCP:LISTEN || true
 
 Expected: no listener before opening the app.
 
-- [ ] **Step 2: Open app**
+- [x] **Step 2: Open app**
 
 Run:
 
@@ -213,7 +213,7 @@ open /Users/phoenix/Applications/Cyrene.app
 
 Expected: launches background `npm run desktop:dev`.
 
-- [ ] **Step 3: Verify server and window**
+- [x] **Step 3: Verify server and window**
 
 Run:
 
@@ -229,7 +229,7 @@ Run a macOS window list query and confirm:
 owner=cyrene title=Cyrene
 ```
 
-- [ ] **Step 4: Verify log**
+- [x] **Step 4: Verify log**
 
 Run:
 
@@ -239,7 +239,7 @@ tail -40 ~/Library/Logs/Cyrene-launcher.log
 
 Expected: includes `Launch requested` and `cyrene web listening at http://127.0.0.1:4317`.
 
-- [ ] **Step 5: Stop verification processes**
+- [x] **Step 5: Stop verification processes**
 
 Stop repo-specific `tauri dev`, `desktop:web`, and `target/debug/cyrene` processes, then verify:
 
@@ -254,7 +254,7 @@ Expected: no listener.
 **Files:**
 - Verify: all modified repo files
 
-- [ ] **Step 1: Typecheck**
+- [x] **Step 1: Typecheck**
 
 Run:
 
@@ -264,7 +264,7 @@ npm run typecheck
 
 Expected: PASS.
 
-- [ ] **Step 2: Full tests**
+- [x] **Step 2: Full tests**
 
 Run:
 
@@ -274,17 +274,17 @@ npm test
 
 Expected: PASS.
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit**
 
 Run:
 
 ```bash
 git add -f docs/superpowers/plans/2026-05-25-cyrene-macos-launcher.md
-git add package.json scripts/create-macos-launcher.mjs tests/macos-launcher.test.ts
+git add package.json scripts/create-macos-launcher.mjs tests/macos-launcher.test.mjs
 git commit -m "feat: add cyrene macos launcher"
 ```
 
-- [ ] **Step 4: Final status**
+- [x] **Step 4: Final status**
 
 Run:
 
