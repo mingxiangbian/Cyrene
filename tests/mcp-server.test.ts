@@ -122,6 +122,18 @@ describe('Cyrene MCP server', () => {
     expect(source).toContain('reject only after explicit user rejection')
   })
 
+  it('documents pending review behavior in the Codex continuity skill', async () => {
+    const source = await readFile(
+      new URL('../integrations/codex/plugin/skills/cyrene-continuity/SKILL.md', import.meta.url),
+      'utf8'
+    )
+
+    expect(source).toContain('cyrene_memory_pending_list')
+    expect(source).toContain('cyrene_memory_promote')
+    expect(source).toContain('cyrene_memory_reject')
+    expect(source).toContain('Pending memory candidates are not active continuity memory')
+  })
+
   it('accepts mcp-server as a local CLI command without treating it as a prompt', async () => {
     try {
       await execFileAsync(process.execPath, ['node_modules/tsx/dist/cli.mjs', 'src/main.ts', 'mcp-server', '--http'], {

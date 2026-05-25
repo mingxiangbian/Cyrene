@@ -19,7 +19,13 @@ Use this skill when the task benefits from Cyrene's long-term project memory, re
 8. Keep responses concise, concrete, and implementation-oriented.
 9. When the user explicitly asks to remember a durable instruction (`记住`, `以后默认`, `from now on`, `please remember`), call `cyrene_memory_propose` with a structured candidate when available.
 10. Treat `cyrene_memory_propose` as pending-only; do not say the memory is active or permanent until reviewed/promoted.
-11. Do not invent user preferences from assistant suggestions or silence.
+11. If `cyrene_memory_propose` returns a pending `review` object, show it as a pending candidate and ask the user for explicit approve/reject before calling promotion tools.
+12. If `cyrene_continuity_get` returns `pendingReview.hasItems: true`, tell the user there are pending memory candidates and use `cyrene_memory_pending_list` / `cyrene_memory_pending_get` when they want to review them.
+13. Only call `cyrene_memory_promote` after the user explicitly says approve/批准/同意/保留 for a specific pending candidate.
+14. Only call `cyrene_memory_reject` after the user explicitly says reject/拒绝/删除/不要记 for a specific pending candidate.
+15. Pending memory candidates are not active continuity memory. Do not use pending content as factual context until promoted.
+16. When multiple pending candidates exist, show at most three at a time unless the user asks for more.
+17. Do not invent user preferences from assistant suggestions or silence.
 
 ## Boundaries
 
