@@ -185,6 +185,8 @@ describe('Codex review summary runtime', () => {
 
     const result = await runCodexReviewSummary({
       cwd,
+      sessionId: 's1',
+      turnId: 't1',
       messages: [{ role: 'user', content: '请总结。' }],
       config: createConfig(cwd),
       callModel: async () =>
@@ -195,7 +197,10 @@ describe('Codex review summary runtime', () => {
               domain: 'project',
               type: 'project_fact',
               content: '密钥是 sk-abc1234567890abcdef1234567890',
-              evidence: [{ summary: '看到了 sk-abc1234567890abcdef1234567890' }]
+              evidence: [{
+                runId: 'evil-sk-abc1234567890abcdef1234567890',
+                summary: '看到了 sk-abc1234567890abcdef1234567890'
+              }]
             }
           ]
         })),
@@ -209,11 +214,16 @@ describe('Codex review summary runtime', () => {
     if (result.action === 'pending') {
       const pending = await readFile(join(result.memoryRoot, 'pending.jsonl'), 'utf8')
       expect(pending).not.toContain('sk-abc')
+      expect(pending).not.toContain('evil-sk')
       expect(pending).toContain('[REDACTED_SECRET]')
+      const [pendingRecord] = pending.trim().split('\n').map((line) => JSON.parse(line) as {
+        evidence: Array<{ runId: string }>
+      })
+      expect(pendingRecord.evidence[0]?.runId).toBe('s1:t1')
     }
   })
 
-  it('writes a failed summary record when the model fails', async () => {
+  it('redacts failed summary reason when the model leaks provider details', async () => {
     const home = await createTempDir('cyrene-review-runtime-home-')
     vi.stubEnv('HOME', home)
     const cwd = await createTempDir('cyrene-review-runtime-project-')
@@ -225,14 +235,24 @@ describe('Codex review summary runtime', () => {
       messages: [{ role: 'user', content: '请总结。' }],
       config: createConfig(cwd),
       callModel: async () => {
-        throw new Error('model unavailable')
+        throw new Error('provider leaked sk-abc1234567890abcdef1234567890')
       },
       now: '2026-05-26T00:00:00.000Z'
     })
 
     expect(result.action).toBe('summary_failed')
+    if (result.action !== 'summary_failed') throw new Error(`Expected summary_failed, got ${result.action}`)
+    expect(result.reason).not.toContain('sk-abc')
+    expect(result.reason).toContain('[REDACTED_SECRET]')
     const summaries = await readReviewSummaries(cwd)
     expect(summaries).toContain('Codex review summary failed; no transcript content persisted.')
-    expect(summaries).toContain('model unavailable')
+    expect(summaries).not.toContain('sk-abc')
+    expect(summaries).toContain('[REDACTED_SECRET]')
+    const [summaryRecord] = summaries.trim().split('\n').map((line) => JSON.parse(line) as {
+      failureReason: string
+      redaction: { output: Record<string, number> }
+    })
+    expect(summaryRecord.failureReason).toContain('[REDACTED_SECRET]')
+    expect(summaryRecord.redaction.output.secret).toBeGreaterThan(0)
   })
 })

@@ -118,6 +118,8 @@ export async function runCodexReviewSummary(input: RunCodexReviewSummaryInput): 
     return { action: 'summary', summaryId, memoryRoot, candidateIds: [] }
   } catch (error) {
     const reason = error instanceof Error ? error.message : String(error)
+    const failureRedaction = redactReviewText(reason)
+    const redactedReason = failureRedaction.text.slice(0, 500)
     await appendCodexReviewSummary(memoryRoot, {
       id: summaryId,
       runId,
@@ -126,12 +128,12 @@ export async function runCodexReviewSummary(input: RunCodexReviewSummaryInput): 
       createdAt,
       status: 'failed',
       summary: FAILED_SUMMARY,
-      redaction: { input: inputRedaction.counts, output: {} },
+      redaction: { input: inputRedaction.counts, output: failureRedaction.counts },
       model,
       candidateIds: [],
-      failureReason: reason.slice(0, 500)
+      failureReason: redactedReason
     })
-    return { action: 'summary_failed', summaryId, memoryRoot, reason: reason.slice(0, 500) }
+    return { action: 'summary_failed', summaryId, memoryRoot, reason: redactedReason }
   }
 }
 
@@ -215,7 +217,7 @@ function redactEvidence(
         if (summary === undefined && quote === undefined) {
           return []
         }
-        return [{ runId: parseString(entry.runId) ?? runId, summary, quote }]
+        return [{ runId, summary, quote }]
       })
     : []
 
