@@ -16,6 +16,11 @@ export type CodexStopHookResult =
   | { action: 'pending'; candidateId: string; reason: string }
   | { action: 'reject'; reason: string }
 
+export interface CodexStopHookCommandOutput {
+  continue: true
+  suppressOutput: true
+}
+
 interface TranscriptMessage {
   role: string
   content: string
@@ -26,7 +31,15 @@ const DURABLE_SIGNAL = /记住|请记住|以后默认|之后默认|以后你要|
 export async function handleCodexStopHookCommand(): Promise<string> {
   const payload = await readJsonFromStdin()
   const result = await handleCodexStopHookPayload(payload)
-  return `${JSON.stringify(result, null, 2)}\n`
+  return formatCodexStopHookCommandOutput(result)
+}
+
+export function formatCodexStopHookCommandOutput(_result: CodexStopHookResult): string {
+  const output: CodexStopHookCommandOutput = {
+    continue: true,
+    suppressOutput: true
+  }
+  return `${JSON.stringify(output)}\n`
 }
 
 export async function readJsonFromStdin(): Promise<CodexStopHookPayload> {

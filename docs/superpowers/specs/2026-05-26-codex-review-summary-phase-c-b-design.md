@@ -36,6 +36,8 @@ Stop hook 每轮生成并持久化 redacted review summary，使用 cheap model 
 - 输出写入前再次 redaction，避免模型把敏感内容复原或重新暴露。
 - Stop hook 在失败时返回 graceful result，不抛出会中断 Codex 的错误。
 - 保留已有显式 `记住` 路径的行为，或由新流程等价覆盖。
+- 验证 Codex 当前可见的 review-to-active 通道：`cyrene_memory_pending_list/get/promote/reject` 必须能在 Codex 新会话中暴露；否则不能把自动 pending 视为上线完成。
+- 调整 Stop hook 的执行预算：当前 5 秒 timeout 只适合本地正则提取，不适合 C-B 的模型调用。
 
 ## Non-Goals
 
@@ -71,6 +73,8 @@ Stop hook 生成一条短 summary，例如：
 
 下一次 `cyrene_continuity_get` 会通过 Phase C-A 的 pending review path 提醒 Codex 展示候选，并等待用户 approve/reject。
 
+如果当前 Codex 会话没有加载到 `cyrene_memory_pending_list/get/promote/reject`，assistant 必须明确说明该会话缺少 promote 工具，并提示需要刷新 MCP tool surface 后再审批。不能让用户误以为回复“批准”已经进入 active memory。
+
 ### 失败轮次
 
 如果模型不可用或输出不可解析，Stop hook 写入一条不含 transcript 内容的 failure audit summary record，返回 graceful `noop` 或 `summary_failed`。Codex 当前工作不应因此失败。
@@ -84,7 +88,7 @@ Stop hook 生成一条短 summary，例如：
 - 读取 hook payload。
 - 解析 `cwd`、`session_id`、`turn_id`、`transcript_path`。
 - 调用新的 review summary runtime。
-- 把 runtime result 转成 hook result JSON。
+- 把 runtime result 写入审计记录，并把命令行 stdout 转成 Codex hook control JSON。
 
 它不直接构造 LLM prompt，也不直接写 review summary 文件。
 
@@ -154,6 +158,8 @@ LLM 调用复用现有 `callModel` 和 provider router：
 
 Phase C-B 不新增单独的模型 env。这样配置面保持简单。
 
+Stop hook 不能无限等待模型。实现时应把 hook install timeout 提升到一个明确的小预算，例如 30 秒，并在 hook runtime 内给模型调用设置更短 deadline，例如 20 秒。超时按 `summary_failed` 处理，stdout 仍返回 Codex hook control JSON。
+
 ## Review Summary Storage
 
 每轮写入 Codex project memory root 下的 `review-summaries.jsonl`。单条记录建议结构：
@@ -195,20 +201,41 @@ LLM 可以返回 0 到多条 candidates，但 prompt 要强约束：
 
 写入 candidate 前，runtime 仍调用 `proposeCodexMemoryCandidate`。已有 validator 继续负责 dedupe、tombstone、pending-only downgrade 和 safety scoring。
 
-## Hook Result Contract
+## Hook Output Contract
 
-Stop hook 结果保持机器可读，建议扩展为：
+Codex Stop hook command 的 stdout 必须保持 Codex hook runner 可接受的控制 JSON。它不能直接输出 Cyrene 内部的 `action: "pending"`、`action: "noop"` 等结果，否则 Codex 会报 `hook returned invalid stop hook JSON output`。
+
+命令行 stdout 固定为：
 
 ```ts
-type CodexStopHookResult =
-  | { action: 'noop'; reason: string; summaryId?: string }
-  | { action: 'summary'; summaryId: string; reason: string }
-  | { action: 'pending'; summaryId: string; candidateIds: string[]; reason: string }
-  | { action: 'reject'; summaryId?: string; reason: string }
-  | { action: 'summary_failed'; reason: string }
+{
+  continue: true,
+  suppressOutput: true
+}
 ```
 
-旧的单 candidate `pending` 结果可在实现时兼容保留，但 C-B 主路径应支持多 candidate ids。
+Cyrene 内部 runtime 仍可以返回 `noop`、`summary`、`pending`、`reject`、`summary_failed` 等结果，但这些结果只能写入 `review-summaries.jsonl`、memory events 或测试断言，不能作为 hook stdout。
+
+Phase C-B 主路径应支持多个 candidate ids，并把 candidate ids 写入 review summary record。
+
+## Review-To-Active Channel
+
+Pending memory 有价值的前提是存在有效的 active promotion 通道。C-B 必须把这条链路作为上线条件：
+
+```txt
+pending.jsonl
+  -> cyrene_memory_pending_list/get
+  -> 用户在 Codex 聊天中明确 approve/reject
+  -> cyrene_memory_promote/reject
+  -> index.jsonl / tombstone + events + projections
+```
+
+本地源码已经注册 `cyrene_memory_pending_list`、`cyrene_memory_pending_get`、`cyrene_memory_promote`、`cyrene_memory_reject`，但 Codex app 的 MCP tool surface 可能在长会话中保持旧工具列表。实现和验证时必须覆盖：
+
+- fresh Codex session 或 MCP reload 后，`tool_search` 能发现四个 review tools。
+- `cyrene_continuity_get` 返回 `pendingReview.hasItems: true` 时，skill 会立刻拉取 pending list 并展示候选。
+- 用户明确批准后，Codex 能调用 `cyrene_memory_promote`，并能在下一次 `cyrene_continuity_get` 中读到 active memory。
+- 如果 review tools 不可见，assistant 必须提示“当前会话不能 promote”，而不是继续生成大量 pending。
 
 ## Error Handling
 
@@ -218,7 +245,7 @@ type CodexStopHookResult =
 - 没有可总结 messages：返回 noop，不写 summary。
 - 模型调用失败：写 failed summary record，返回 `summary_failed`。
 - JSON 解析失败：写 failed summary record，返回 `summary_failed`。
-- candidate propose 被 validator reject：summary 仍保留，hook result 可包含 reject reason，但不阻塞。
+- candidate propose 被 validator reject：summary 仍保留，internal result 可记录 reject reason，但 hook stdout 仍保持 Codex control JSON。
 - review summary 写入失败：返回 `summary_failed`，不再尝试写 pending，避免候选缺少审计摘要。
 
 ## Testing
@@ -230,7 +257,9 @@ type CodexStopHookResult =
 - 有 memory candidate 时写 summary，并写 pending candidate。
 - LLM 失败时写 failed summary record，不抛出阻塞错误。
 - LLM 返回敏感内容时，输出落盘前被再次 redaction。
-- 多 candidate 返回时，hook result 包含多个 candidate ids。
+- 多 candidate 返回时，review summary record 包含多个 candidate ids。
+- Stop hook command stdout 只输出 `{ "continue": true, "suppressOutput": true }`，不输出内部 `action`。
+- Codex review tools 不可见时，验证失败，不能宣称 pending-to-active 通道可用。
 - transcript 坏行不会导致整个 hook 失败。
 - 显式 `记住` 类型输入仍能生成 pending memory。
 
@@ -248,6 +277,8 @@ npm run typecheck
 1. 普通对话会生成 review summary，但 pending 为空。
 2. “以后默认 spec 和 plan 用中文写”会生成 review summary 和 pending candidate。
 3. 含 token/email 的 transcript 不会把原文 secret 写入 `review-summaries.jsonl` 或 pending evidence。
+4. Stop hook command stdout 是 Codex hook control JSON，不再触发 invalid stop hook JSON output。
+5. fresh Codex session 中可见 `cyrene_memory_pending_list/get/promote/reject`，并能把一条 pending promote 到 active。
 
 ## 已确认选择与实现留白
 
@@ -257,5 +288,6 @@ npm run typecheck
 - 使用 cheap model route。
 - 模型失败不阻塞 Codex。
 - Phase C-B 不做 approve/reject UI 升级。
+- pending-to-active 通道必须在 Codex tool surface 中验证；当前长会话如果没有加载 promote tools，不能作为可用性证明。
 
-剩余实现细节由 implementation plan 决定：redaction regex 的精确边界、hook result 是否保留完全向后兼容字段。
+剩余实现细节由 implementation plan 决定：redaction regex 的精确边界，以及 internal result 与 review summary record 的具体字段命名。

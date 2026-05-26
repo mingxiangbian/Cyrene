@@ -3,7 +3,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { codexProjectMemoryRoot } from '../src/codex/codex-memory-root.js'
-import { handleCodexStopHookPayload } from '../src/codex/codex-hook-stop.js'
+import { formatCodexStopHookCommandOutput, handleCodexStopHookPayload } from '../src/codex/codex-hook-stop.js'
 import { identifyCodexProject } from '../src/codex/project-id.js'
 
 const originalHome = process.env.HOME
@@ -76,5 +76,20 @@ describe('Codex Stop hook runtime', () => {
     const result = await handleCodexStopHookPayload({ cwd, transcript_path: transcript })
 
     expect(result.action).toBe('noop')
+  })
+
+  it('formats command output as valid Codex Stop hook JSON', () => {
+    const output = formatCodexStopHookCommandOutput({
+      action: 'noop',
+      reason: 'No explicit durable user instruction found.'
+    })
+    const parsed = JSON.parse(output) as Record<string, unknown>
+
+    expect(parsed).toEqual({
+      continue: true,
+      suppressOutput: true
+    })
+    expect(output).toMatch(/\n$/)
+    expect(parsed).not.toHaveProperty('action')
   })
 })
