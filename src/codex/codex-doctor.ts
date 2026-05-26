@@ -178,7 +178,8 @@ function readTomlStringArrayValue(block: string, key: string): string[] | undefi
 
 function readTomlAssignmentValue(block: string, key: string): string | undefined {
   const escapedKey = key.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
-  return block.match(new RegExp(`^\\s*${escapedKey}\\s*=\\s*(.+?)\\s*$`, 'm'))?.[1]?.trim()
+  const value = block.match(new RegExp(`^\\s*${escapedKey}\\s*=\\s*(.+?)\\s*$`, 'm'))?.[1]
+  return value === undefined ? undefined : stripTomlInlineComment(value).trim()
 }
 
 function parseTomlString(value: string): string | undefined {
@@ -201,23 +202,66 @@ function hasEnabledMcpServer(configText: string, name: string): boolean {
   if (block === undefined) {
     return false
   }
-  return !/^\s*enabled\s*=\s*false\s*$/m.test(block)
+  return readTomlBooleanValue(block, 'enabled') !== false
+}
+
+function readTomlBooleanValue(block: string, key: string): boolean | undefined {
+  const value = readTomlAssignmentValue(block, key)
+  if (value === 'true') {
+    return true
+  }
+  if (value === 'false') {
+    return false
+  }
+  return undefined
 }
 
 function readTomlBlock(configText: string, heading: string): string | undefined {
   const lines = configText.split(/\r?\n/)
-  const start = lines.findIndex((line) => line.trim() === heading)
+  const start = lines.findIndex((line) => stripTomlInlineComment(line).trim() === heading)
   if (start < 0) {
     return undefined
   }
   const body: string[] = []
   for (let index = start + 1; index < lines.length; index += 1) {
-    if (/^\s*\[/.test(lines[index])) {
+    if (/^\s*\[/.test(stripTomlInlineComment(lines[index]))) {
       break
     }
     body.push(lines[index])
   }
   return body.join('\n')
+}
+
+function stripTomlInlineComment(value: string): string {
+  let quote: '"' | "'" | undefined
+  let escaped = false
+  for (let index = 0; index < value.length; index += 1) {
+    const char = value[index]
+    if (quote === '"') {
+      if (escaped) {
+        escaped = false
+      } else if (char === '\\') {
+        escaped = true
+      } else if (char === '"') {
+        quote = undefined
+      }
+      continue
+    }
+    if (quote === "'") {
+      if (char === "'") {
+        quote = undefined
+      }
+      continue
+    }
+    if (char === '"' || char === "'") {
+      quote = char
+      continue
+    }
+    if (char === '#') {
+      return value.slice(0, index)
+    }
+  }
+  return value
 }
 
 async function readOptional(path: string): Promise<string> {

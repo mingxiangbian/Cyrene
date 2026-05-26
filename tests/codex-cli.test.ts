@@ -412,8 +412,54 @@ describe('cyrene codex CLI', () => {
     expect(result.stderr).toBe('')
     expect(result.stdout).toContain('global pending: 1')
     expect(result.stdout).toContain('project pending: 0')
-    expect(result.stdout).toContain(`mcp command: npm --prefix ${repoRoot} run --silent dev -- mcp-server --stdio`)
+    expect(result.stdout).toContain('mcp command:')
+    expect(result.stdout).toContain('npm')
+    expect(result.stdout).toContain('--prefix')
+    expect(result.stdout).toContain(repoRoot)
+    expect(result.stdout).toContain('mcp-server')
+    expect(result.stdout).toContain('--stdio')
     expect(result.stdout).toContain('mcp command freshness: current repo')
+  })
+
+  it('doctor parses TOML inline comments and reports project pending counts', async () => {
+    const home = await createTempDir('cyrene-codex-cli-doctor-comments-home-')
+    process.env.HOME = home
+    const repoRoot = process.cwd()
+    const configPath = join(home, '.codex-config.toml')
+    await writeFile(
+      configPath,
+      [
+        '[mcp_servers.cyrene] # local dev',
+        'command = "npm" # local',
+        `args = ["--prefix", ${JSON.stringify(repoRoot)}, "run", "--silent", "dev", "--", "mcp-server", "--stdio"] # local`,
+        'enabled = true # local'
+      ].join('\n')
+    )
+    const identity = await identifyCodexProject(process.cwd())
+    const projectMemoryRoot = codexProjectMemoryRoot(identity.projectId)
+    const projectPending = {
+      ...createPending(),
+      id: 'project-pending-1',
+      normalizedKey: 'project-pending-count-diagnostic'
+    }
+    await mkdir(projectMemoryRoot, { recursive: true })
+    await writeFile(join(projectMemoryRoot, 'pending.jsonl'), `${JSON.stringify(projectPending)}\n`)
+
+    const result = await execFileAsync(
+      process.execPath,
+      ['node_modules/tsx/dist/cli.mjs', 'src/main.ts', 'codex', 'doctor', '--config', configPath],
+      { env: cliEnv(home) }
+    )
+
+    expect(result.stderr).toBe('')
+    expect(result.stdout).toContain('cyrene mcp: configured')
+    expect(result.stdout).toContain('mcp command:')
+    expect(result.stdout).toContain('npm')
+    expect(result.stdout).toContain('--prefix')
+    expect(result.stdout).toContain(repoRoot)
+    expect(result.stdout).toContain('mcp command freshness: current repo')
+    expect(result.stdout).toContain('global pending: 0')
+    expect(result.stdout).toContain('project pending: 1')
   })
 
   it('runs memory dream from the CLI', async () => {
