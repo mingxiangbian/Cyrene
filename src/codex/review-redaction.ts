@@ -36,14 +36,14 @@ const RULES: RedactionRule[] = [
     replacement: '[REDACTED_EMAIL]'
   },
   {
-    name: 'phone',
-    pattern: /\b(?:\+?\d[\d .()_-]{7,}\d)\b/g,
-    replacement: '[REDACTED_PHONE]'
-  },
-  {
     name: 'secret',
     pattern: /\b[A-Fa-f0-9]{32,}\b/g,
     replacement: '[REDACTED_SECRET]'
+  },
+  {
+    name: 'phone',
+    pattern: /\b(?:\+?\d[\d .()_-]{7,}\d)\b/g,
+    replacement: '[REDACTED_PHONE]'
   }
 ]
 

@@ -33,4 +33,12 @@ describe('Codex review redaction', () => {
   it('merges redaction counts', () => {
     expect(redactReviewText('a@example.com b@example.com').counts.email).toBe(2)
   })
+
+  it('classifies long numeric hex tokens as secrets', () => {
+    const result = redactReviewText('12345678901234567890123456789012')
+
+    expect(result.text).toContain('[REDACTED_SECRET]')
+    expect(result.counts.secret).toBe(1)
+    expect(result.counts.phone ?? 0).toBe(0)
+  })
 })
