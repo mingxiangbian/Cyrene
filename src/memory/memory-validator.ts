@@ -118,6 +118,7 @@ export function isPromotablePending(candidate: PendingMemory): boolean {
 
 export function distinctEvidenceCount(candidate: PendingMemory): number {
   const keys = new Set<string>()
+  const seenRunIds = new Set<string>()
   for (const entry of candidate.evidence) {
     const evidenceGroupId = cleanEvidencePart(entry.evidenceGroupId)
     const sessionId = cleanEvidencePart(entry.sessionId)
@@ -127,9 +128,15 @@ export function distinctEvidenceCount(candidate: PendingMemory): number {
     if (evidenceGroupId === undefined && sessionId === undefined && runId === undefined && summary === undefined && quote === undefined) {
       continue
     }
+    if (runId !== undefined) {
+      if (seenRunIds.has(runId)) {
+        continue
+      }
+      seenRunIds.add(runId)
+    }
     const summaryQuote = `${entry.summary ?? ''}|${entry.quote ?? ''}`
     const hash = createHash('sha256').update(summaryQuote).digest('hex')
-    keys.add(sessionId ?? runId ?? evidenceGroupId ?? hash)
+    keys.add(evidenceGroupId ?? sessionId ?? runId ?? hash)
   }
   return keys.size
 }

@@ -34,6 +34,19 @@ describe('Codex repeated evidence promotion policy', () => {
     expect(result).toMatchObject({ promotable: true, distinctEvidenceCount: 2 })
   })
 
+  it('counts different evidence groups in the same session as independent evidence', () => {
+    const candidate = createPending({
+      seenCount: 2,
+      evidence: [
+        { runId: 'run-1', sessionId: 'same-session', evidenceGroupId: 'group-1', summary: 'First observation.' },
+        { runId: 'run-2', sessionId: 'same-session', evidenceGroupId: 'group-2', summary: 'Second observation.' }
+      ]
+    })
+
+    const result = evaluatePendingPromotion(candidate)
+    expect(result).toMatchObject({ promotable: true, distinctEvidenceCount: 2 })
+  })
+
   it('does not promote low-value confirmation noise', () => {
     const candidate = createPending({
       content: '确认',
