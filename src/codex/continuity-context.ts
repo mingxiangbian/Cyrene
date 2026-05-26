@@ -1,8 +1,7 @@
-import { readFile } from 'node:fs/promises'
-import { join } from 'node:path'
 import { buildContinuitySnapshot } from '../affect/affect-runtime.js'
 import type { PrincipledDissentPolicy } from '../affect/types.js'
 import { createDefaultConfig } from '../config.js'
+import { readModelProfileFromRootIfExists } from '../memory/model-profile.js'
 import { memoryRetrievalBudgetForTask, retrieveMemories } from '../memory/memory-retriever.js'
 import type { RetrieveMemoriesInput } from '../memory/memory-retriever.js'
 import { readActiveMemoriesFromRoot } from '../memory/memory-store.js'
@@ -10,6 +9,8 @@ import type { CyreneMemory } from '../memory/types.js'
 import {
   codexGlobalMemoryRoot,
   codexProjectMemoryRoot,
+  getReadableCodexGlobalMemoryRoot,
+  getReadableCodexProjectMemoryRoot,
   getReadableCodexProjectMemoryRoots
 } from './codex-memory-root.js'
 import { getCodexPendingReviewNotice } from './memory-review.js'
@@ -74,8 +75,8 @@ export async function getCodexContinuityContext(input: {
       maxTokens: budget.maxTokens
     }),
     getCodexPendingReviewNotice({ cwd: input.cwd }),
-    readProfileIfExists(globalMemoryRoot),
-    readProfileIfExists(projectMemoryRoot)
+    readGlobalCodexProfileIfExists(),
+    readProjectCodexProfileIfExists(project.projectId)
   ])
   const profileContent = [globalProfile, projectProfile].filter(Boolean).join('\n\n')
   const snapshot = await buildContinuitySnapshot({
@@ -127,15 +128,20 @@ export async function getCodexContinuityContext(input: {
   }
 }
 
-async function readProfileIfExists(root: string): Promise<string | undefined> {
-  try {
-    return (await readFile(join(root, 'MODEL_PROFILE.md'), 'utf8')).trim()
-  } catch (error) {
-    if (isFileErrorCode(error, 'ENOENT')) {
-      return undefined
-    }
-    throw error
+async function readGlobalCodexProfileIfExists(): Promise<string | undefined> {
+  const root = await getReadableCodexGlobalMemoryRoot()
+  if (root === null) {
+    return undefined
   }
+  return readModelProfileFromRootIfExists(root)
+}
+
+async function readProjectCodexProfileIfExists(projectId: string): Promise<string | undefined> {
+  const root = await getReadableCodexProjectMemoryRoot(projectId)
+  if (root === null) {
+    return undefined
+  }
+  return readModelProfileFromRootIfExists(root)
 }
 
 async function readLegacyGlobalCodexMemories(currentProjectId: string): Promise<CyreneMemory[]> {
@@ -147,8 +153,4 @@ async function readLegacyGlobalCodexMemories(currentProjectId: string): Promise<
       .map(async (root) => (await readActiveMemoriesFromRoot(root)).filter((memory) => memory.scope === 'global'))
   )
   return legacy.flat()
-}
-
-function isFileErrorCode(error: unknown, code: string): boolean {
-  return error instanceof Error && 'code' in error && error.code === code
 }

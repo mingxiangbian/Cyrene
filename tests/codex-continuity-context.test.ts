@@ -1,5 +1,5 @@
 import { execFile } from 'node:child_process'
-import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, rm, symlink, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { promisify } from 'node:util'
@@ -88,6 +88,29 @@ describe('Codex continuity context', () => {
       '# Global Profile\n\nUse global continuity.',
       '# Project Profile\n\nUse project continuity.'
     ].join('\n\n'))
+  })
+
+  it('rejects symlinked global and project model profiles before returning outside content', async () => {
+    const home = await createTempDir('cyrene-codex-continuity-profile-symlink-home-')
+    process.env.HOME = home
+    const repo = await createTempDir('cyrene-codex-continuity-profile-symlink-repo-')
+    const identity = await identifyCodexProject(repo)
+    const projectMemoryRoot = codexProjectMemoryRoot(identity.projectId)
+    const globalMemoryRoot = codexGlobalMemoryRoot()
+    const outsideGlobal = join(home, 'outside-global-profile.md')
+    const outsideProject = join(home, 'outside-project-profile.md')
+    await mkdir(projectMemoryRoot, { recursive: true })
+    await mkdir(globalMemoryRoot, { recursive: true })
+    await writeFile(outsideGlobal, 'Outside global profile must not be returned.\n')
+    await writeFile(outsideProject, 'Outside project profile must not be returned.\n')
+    await symlink(outsideGlobal, join(globalMemoryRoot, 'MODEL_PROFILE.md'))
+    await symlink(outsideProject, join(projectMemoryRoot, 'MODEL_PROFILE.md'))
+
+    await expect(getCodexContinuityContext({
+      cwd: repo,
+      userMessage: 'What continuity profile applies?',
+      task: 'coding'
+    })).rejects.toThrow(/Refusing.*symlink|symlink/i)
   })
 
   it('includes global active memory from the Codex global memory root in any project context', async () => {

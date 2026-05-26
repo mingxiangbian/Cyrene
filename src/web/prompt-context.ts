@@ -1,5 +1,5 @@
 import { readFile } from 'node:fs/promises'
-import { dirname, join, resolve } from 'node:path'
+import { dirname, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import type { AppConfig } from '../config.js'
 import { createDefaultConfig } from '../config.js'
@@ -8,7 +8,9 @@ import type { ContinuitySnapshot } from '../affect/types.js'
 import type { CallModelInput, ModelResponse } from '../llm-client.js'
 import { contextInfoForRoute } from '../models/provider-router.js'
 import type { ThinkingMode } from '../models/types.js'
+import { readModelProfileFromRootIfExists } from '../memory/model-profile.js'
 import { formatMemoryContext, memoryRetrievalBudgetForTask, retrieveMemories } from '../memory/memory-retriever.js'
+import { getReadableMemoryRoot } from '../memory/paths.js'
 import {
   loadInstructionsIfExists,
   loadRuleStack,
@@ -92,18 +94,11 @@ export async function buildAgentRuntime(
 }
 
 async function readModelProfileIfExists(memoryCwd: string): Promise<string> {
-  try {
-    return (await readFile(join(memoryCwd, '.cyrene', 'memory', 'MODEL_PROFILE.md'), 'utf8')).trim()
-  } catch (error) {
-    if (isFileErrorCode(error, 'ENOENT')) {
-      return ''
-    }
-    throw error
+  const memoryRoot = await getReadableMemoryRoot(memoryCwd)
+  if (memoryRoot === null) {
+    return ''
   }
-}
-
-function isFileErrorCode(error: unknown, code: string): boolean {
-  return error instanceof Error && 'code' in error && error.code === code
+  return await readModelProfileFromRootIfExists(memoryRoot) ?? ''
 }
 
 function applyRuntimeOverrides(config: AppConfig, overrides: AgentRuntimeOverrides): AppConfig {

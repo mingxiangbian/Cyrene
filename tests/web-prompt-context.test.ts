@@ -1,4 +1,4 @@
-import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, rm, symlink, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import { afterEach, describe, expect, it, vi } from 'vitest'
@@ -141,6 +141,20 @@ describe('buildAgentRuntime', () => {
     expect(runtime.config.cwd).toBe(resolve(workspace))
     expect(runtime.systemPrompt).toContain('Root memory is shared by Web and CLI.')
     expect(runtime.systemPrompt).not.toContain('Workspace-local memory should not be injected.')
+  })
+
+  it('rejects symlinked local model profile before injecting outside content', async () => {
+    const home = await mkdtemp(join(tmpdir(), 'cyrene-web-home-'))
+    tempHomes.push(home)
+    process.env.HOME = home
+
+    const root = join(home, 'workspace', 'project')
+    const outside = join(home, 'outside-profile.md')
+    await mkdir(join(root, '.cyrene', 'memory'), { recursive: true })
+    await writeFile(outside, 'Outside profile content must not enter prompt.\n')
+    await symlink(outside, join(root, '.cyrene', 'memory', 'MODEL_PROFILE.md'))
+
+    await expect(buildAgentRuntime(root)).rejects.toThrow(/Refusing.*symlink|symlink/i)
   })
 })
 
