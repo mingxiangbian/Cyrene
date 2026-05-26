@@ -1,5 +1,6 @@
 import { readFile } from 'node:fs/promises'
 import { proposeCodexMemoryCandidate } from './memory-propose.js'
+import { parseTranscriptMessages } from './transcript.js'
 
 export interface CodexStopHookPayload {
   cwd?: unknown
@@ -19,11 +20,6 @@ export type CodexStopHookResult =
 export interface CodexStopHookCommandOutput {
   continue: true
   suppressOutput: true
-}
-
-interface TranscriptMessage {
-  role: string
-  content: string
 }
 
 const DURABLE_SIGNAL = /记住|请记住|以后默认|之后默认|以后你要|以后请|from now on|please remember|remember that|default to/i
@@ -107,54 +103,6 @@ export async function extractRecentExplicitMemoryInstruction(payload: CodexStopH
   return userMessages.reverse().find((message) => DURABLE_SIGNAL.test(message.content))?.content
 }
 
-export function parseTranscriptMessages(text: string): TranscriptMessage[] {
-  return text
-    .split(/\r?\n/)
-    .map((line) => line.trim())
-    .filter(Boolean)
-    .flatMap((line) => {
-      try {
-        return parseTranscriptLine(JSON.parse(line) as unknown)
-      } catch {
-        return []
-      }
-    })
-}
-
-function parseTranscriptLine(value: unknown): TranscriptMessage[] {
-  const record = isRecord(value) ? value : undefined
-  const source = isRecord(record?.message) ? record.message : record
-  const role = asString(source?.role)
-  const content = contentToString(source?.content)
-  if (role === undefined || content === undefined) {
-    return []
-  }
-  return [{ role, content }]
-}
-
-function contentToString(value: unknown): string | undefined {
-  if (typeof value === 'string') {
-    return value
-  }
-  if (!Array.isArray(value)) {
-    return undefined
-  }
-  const parts = value.flatMap((entry) => {
-    if (typeof entry === 'string') {
-      return [entry]
-    }
-    if (isRecord(entry) && typeof entry.text === 'string') {
-      return [entry.text]
-    }
-    return []
-  })
-  return parts.length > 0 ? parts.join('\n') : undefined
-}
-
 function asString(value: unknown): string | undefined {
   return typeof value === 'string' && value.trim() !== '' ? value : undefined
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null
 }
