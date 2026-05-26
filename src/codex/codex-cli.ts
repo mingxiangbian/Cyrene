@@ -1,4 +1,6 @@
 import { formatCodexDoctor } from './codex-doctor.js'
+import { formatCodexStopHookInstall, installCodexStopHook } from './codex-hook-install.js'
+import { handleCodexStopHookCommand } from './codex-hook-stop.js'
 import { installCodexDevBridge } from './codex-install.js'
 
 export async function handleCodexCommand(input: { cwd: string; args: string[] }): Promise<void> {
@@ -13,7 +15,18 @@ export async function handleCodexCommand(input: { cwd: string; args: string[] })
     return
   }
 
-  console.error('Usage: cyrene codex <doctor [--config <path>]|install --dev>')
+  if (command === 'install-hook' && input.args[1] === '--stop') {
+    const dryRun = input.args.includes('--dry-run')
+    process.stdout.write(dryRun ? await formatCodexStopHookInstall({ dryRun: true }) : await installCodexStopHook({}))
+    return
+  }
+
+  if (command === 'hook' && input.args[1] === 'stop') {
+    process.stdout.write(await handleCodexStopHookCommand())
+    return
+  }
+
+  console.error('Usage: cyrene codex <doctor [--config <path>]|install --dev|install-hook --stop [--dry-run]|hook stop>')
   process.exit(1)
 }
 

@@ -2,6 +2,7 @@ import { access, readFile } from 'node:fs/promises'
 import { homedir } from 'node:os'
 import { join } from 'node:path'
 import { codexGlobalRoot } from './codex-memory-root.js'
+import { isCodexStopHookConfigured } from './codex-hook-install.js'
 import { identifyCodexProject } from './project-id.js'
 
 export async function formatCodexDoctor(input: { cwd: string; configPath?: string }): Promise<string> {
@@ -11,6 +12,7 @@ export async function formatCodexDoctor(input: { cwd: string; configPath?: strin
   const agentmemoryEnabled = hasEnabledMcpServer(configText, 'agentmemory')
   const skillPath = join(homedir(), '.agents', 'skills', 'cyrene-continuity', 'SKILL.md')
   const skillExists = await pathExists(skillPath)
+  const stopHookConfigured = await isCodexStopHookConfigured()
   const identity = await identifyCodexProject(input.cwd)
   const actions = [
     cyreneConfigured ? undefined : '  action: add [mcp_servers.cyrene] to Codex config',
@@ -31,6 +33,8 @@ export async function formatCodexDoctor(input: { cwd: string; configPath?: strin
     `  config: ${configText === '' ? 'missing' : configPath}`,
     `  cyrene mcp: ${cyreneConfigured ? 'configured' : 'missing'}`,
     `  agentmemory: ${agentmemoryEnabled ? 'enabled' : 'disabled'}`,
+    `  stop hook: ${stopHookConfigured ? 'configured' : 'missing'}`,
+    stopHookConfigured ? undefined : '  advisory: optional Stop hook is not installed',
     `  status: ${ready ? 'ready' : 'not ready'}`,
     ...actions,
     '',
@@ -41,7 +45,7 @@ export async function formatCodexDoctor(input: { cwd: string; configPath?: strin
     `  codex root: ${codexGlobalRoot()}`,
     `  projectId: ${identity.projectId}`,
     `  displayName: ${identity.displayName}`
-  ].filter((line) => line !== '').join('\n') + '\n'
+  ].filter((line): line is string => line !== undefined && line !== '').join('\n') + '\n'
 }
 
 function hasEnabledMcpServer(configText: string, name: string): boolean {
