@@ -27,4 +27,13 @@ describe('Codex transcript parsing', () => {
     expect(recentTranscriptMessages(messages, 40)[0]?.content).toBe('message-5')
     expect(recentTranscriptMessages(messages, 40)[39]?.content).toBe('message-44')
   })
+
+  it('returns no messages when the recent message limit is zero', () => {
+    const messages = [
+      { role: 'user', content: 'hello' },
+      { role: 'assistant', content: 'world' }
+    ]
+
+    expect(recentTranscriptMessages(messages, 0)).toEqual([])
+  })
 })

@@ -18,6 +18,9 @@ export function parseTranscriptMessages(text: string): TranscriptMessage[] {
 }
 
 export function recentTranscriptMessages(messages: TranscriptMessage[], limit = 40): TranscriptMessage[] {
+  if (limit <= 0) {
+    return []
+  }
   return messages.slice(-limit)
 }
 
