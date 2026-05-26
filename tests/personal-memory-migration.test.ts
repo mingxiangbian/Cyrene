@@ -34,7 +34,7 @@ describe('personal memory migration and snapshots', () => {
 
     const result = await migrateLegacyMemory(cwd)
 
-    expect(result).toMatchObject({ migrated: 3, deletedLegacyFiles: 3 })
+    expect(result).toMatchObject({ migrated: 3, deletedLegacyFiles: 4 })
     expect(result.snapshotId).toMatch(/^memory-/)
     const memories = await readActiveMemories(cwd)
     expect(memories.map((memory) => [memory.domain, memory.type, memory.strength, memory.scope, memory.content])).toEqual(
@@ -47,9 +47,8 @@ describe('personal memory migration and snapshots', () => {
     await expect(readFile(join(memoryDir, 'style.md'), 'utf8')).rejects.toMatchObject({ code: 'ENOENT' })
     await expect(readFile(join(memoryDir, 'daily.md'), 'utf8')).rejects.toMatchObject({ code: 'ENOENT' })
     await expect(readFile(join(memoryDir, 'sessions', '2026-05-22.md'), 'utf8')).rejects.toMatchObject({ code: 'ENOENT' })
-    await expect(readFile(join(memoryDir, 'MEMORY.md'), 'utf8')).resolves.toContain(
-      'Generated from .cyrene/memory/index.jsonl'
-    )
+    await expect(readFile(join(memoryDir, 'MEMORY.md'), 'utf8')).rejects.toMatchObject({ code: 'ENOENT' })
+    await expect(readFile(join(memoryDir, 'MODEL_PROFILE.md'), 'utf8')).resolves.toContain('Prefer small patches.')
   })
 
   it('creates snapshots, supports dry-run restore, and restores typed memory state', async () => {

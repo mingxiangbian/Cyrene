@@ -4,9 +4,14 @@ import { randomUUID } from 'node:crypto'
 import { renderMemoryProjections } from './memory-exporter.js'
 import {
   appendMemoryEvent,
+  appendMemoryEventFromRoot,
+  ensureWritableMemoryRootPath,
   readActiveMemories,
+  readActiveMemoriesFromRoot,
   readPendingMemories,
+  readPendingMemoriesFromRoot,
   readTombstones,
+  readTombstonesFromRoot,
   writeActiveMemories,
   writePendingMemories,
   writeTombstones
@@ -61,6 +66,34 @@ export async function createMemorySnapshot(cwd: string, reason: string): Promise
 
   await writeFile(snapshotFilePath(dir, id), `${JSON.stringify(snapshot, null, 2)}\n`, { flag: 'wx' })
   await appendMemoryEvent(cwd, {
+    id: randomUUID(),
+    action: 'snapshot',
+    at: createdAt,
+    reason,
+    snapshotId: id,
+    details: { ...summarizeSnapshot(snapshot) }
+  })
+
+  return summarizeSnapshot(snapshot)
+}
+
+export async function createMemorySnapshotFromRoot(memoryRoot: string, reason: string): Promise<MemorySnapshotSummary> {
+  const root = await ensureWritableMemoryRootPath(memoryRoot)
+  const dir = await ensureSnapshotDir(root)
+  const createdAt = new Date().toISOString()
+  const id = `memory-${createdAt.replace(/[:.]/g, '-')}-${randomUUID().slice(0, 8)}`
+  const snapshot: MemorySnapshotFile = {
+    version: 1,
+    id,
+    createdAt,
+    reason,
+    active: await readActiveMemoriesFromRoot(root),
+    pending: await readPendingMemoriesFromRoot(root),
+    tombstones: await readTombstonesFromRoot(root)
+  }
+
+  await writeFile(snapshotFilePath(dir, id), `${JSON.stringify(snapshot, null, 2)}\n`, { flag: 'wx' })
+  await appendMemoryEventFromRoot(root, {
     id: randomUUID(),
     action: 'snapshot',
     at: createdAt,

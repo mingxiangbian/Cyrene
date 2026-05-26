@@ -1,4 +1,5 @@
 import { createHash, randomUUID } from 'node:crypto'
+import { createDefaultConfig } from '../config.js'
 import {
   codexGlobalMemoryRoot,
   codexProjectMemoryRoot,
@@ -6,7 +7,8 @@ import {
   getReadableCodexProjectMemoryRoot
 } from './codex-memory-root.js'
 import { identifyCodexProject } from './project-id.js'
-import { assertMemoryProjectionTargetsSafe, renderMemoryProjectionsFromRoot } from '../memory/memory-exporter.js'
+import { assertMemoryProjectionTargetsSafe } from '../memory/memory-exporter.js'
+import { runMemoryMaintenanceFromRoot } from '../memory/memory-maintenance.js'
 import {
   appendMemoryEventFromRoot,
   appendTombstoneFromRoot,
@@ -295,7 +297,20 @@ export async function promoteCodexPendingMemory(input: {
     memoryId: memory.id,
     candidateId: candidate.id
   })
-  await renderMemoryProjectionsFromRoot(memoryRoot)
+  const config = createDefaultConfig(input.cwd)
+  await runMemoryMaintenanceFromRoot({
+    memoryRoot,
+    budget: {
+      activeMaxItems: config.memoryActiveMaxItems,
+      activeContentMaxChars: config.memoryActiveContentMaxChars,
+      indexFileMaxChars: config.memoryIndexFileMaxChars,
+      singleMemoryContentMaxChars: config.memorySingleContentMaxChars,
+      singleMemoryEvidenceMaxChars: config.memorySingleEvidenceMaxChars,
+      pendingMaxItems: config.memoryPendingMaxItems
+    },
+    now,
+    reason: 'after manual memory promotion'
+  })
 
   return {
     project,

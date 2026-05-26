@@ -136,10 +136,16 @@ describe('Codex pending memory review', () => {
         candidateId: candidate.id,
         memoryId: candidate.id,
         reason: 'User approved in Codex.'
+      }),
+      expect.objectContaining({
+        action: 'snapshot',
+        reason: 'after manual memory promotion'
       })
     ])
     const projection = await readFile(join(memoryRoot, 'MODEL_PROFILE.md'), 'utf8')
     expect(projection).toContain(candidate.content)
+    const snapshots = await readdir(join(memoryRoot, 'snapshots'))
+    expect(snapshots).toHaveLength(1)
   })
 
   it('promotes affective pending memory using validator-normalized shape', async () => {

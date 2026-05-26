@@ -167,6 +167,7 @@ async function deleteLegacyArtifacts(memoryRoot: string, legacyIndexFiles: strin
     deleted += await removeIfExists(file)
   }
 
+  deleted += await removeIfExists(join(memoryRoot, 'MEMORY.md'))
   deleted += await removeIfExists(join(memoryRoot, 'daily.md'))
   deleted += await removeIfExists(join(memoryRoot, 'daily.archive.md'))
   deleted += await removeIfExists(join(memoryRoot, 'sessions'))
