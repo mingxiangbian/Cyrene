@@ -237,7 +237,7 @@ describe('personal memory validator and lifecycle', () => {
     expect(decision.action).toBe('reject')
   })
 
-  it('promotes repeated pending candidates when policy becomes eligible', async () => {
+  it('keeps repeated pending candidates pending until Dream promotes them', async () => {
     const cwd = await createTempDir()
     await upsertPendingMemory(cwd, {
       ...createCandidate({
@@ -269,10 +269,45 @@ describe('personal memory validator and lifecycle', () => {
       now: '2026-05-23T00:01:00.000Z'
     })
 
-    expect(result.action).toBe('promote')
-    await expect(readActiveMemories(cwd)).resolves.toHaveLength(1)
-    await expect(readPendingMemories(cwd)).resolves.toEqual([])
+    expect(result.action).toBe('pending')
+    await expect(readActiveMemories(cwd)).resolves.toHaveLength(0)
+    const pending = await readPendingMemories(cwd)
+    expect(pending).toHaveLength(1)
+    expect(pending[0]).toMatchObject({
+      id: 'pending-existing',
+      normalizedKey: 'user-prefers-direct-plans',
+      seenCount: 3
+    })
+    expect(pending[0]?.evidence.map((entry) => entry.runId)).toEqual(['run-1', 'run-2', 'pending-new'])
     await expect(readTombstones(cwd)).resolves.toEqual([])
+  })
+
+  it('downgrades eligible explicit hard project candidates to pending during runtime processing', async () => {
+    const cwd = await createTempDir()
+
+    const result = await processMemoryCandidate({
+      cwd,
+      candidate: createCandidate({
+        id: 'explicit-hard-project',
+        domain: 'project',
+        type: 'project_fact',
+        strength: 'hard',
+        scope: 'project',
+        source: 'user_explicit',
+        normalizedKey: 'explicit-hard-project-memory'
+      }),
+      now: '2026-05-23T00:01:00.000Z'
+    })
+
+    expect(result.action).toBe('pending')
+    await expect(readActiveMemories(cwd)).resolves.toHaveLength(0)
+    const pending = await readPendingMemories(cwd)
+    expect(pending).toHaveLength(1)
+    expect(pending[0]).toMatchObject({
+      id: 'explicit-hard-project',
+      normalizedKey: 'explicit-hard-project-memory',
+      status: 'pending'
+    })
   })
 })
 

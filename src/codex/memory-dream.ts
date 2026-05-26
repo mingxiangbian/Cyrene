@@ -60,6 +60,14 @@ export interface CodexMemoryProfileResult {
   content: string
 }
 
+export interface CodexMemoryMaintenanceResult {
+  project: { projectId: string; displayName: string }
+  roots: Array<{
+    memoryRoot: string
+    maintenance: MemoryMaintenanceResult
+  }>
+}
+
 const DREAM_LOCK_DIR = 'dream.lock'
 const DREAM_LOCKS_DIR = '.locks'
 const MAX_PENDING_EVIDENCE = 10
@@ -84,6 +92,36 @@ export async function runCodexMemoryDream(input: {
     } else {
       results.push(await runDeepDreamRoot(memoryRoot, now, config))
     }
+  }
+
+  return {
+    project: { projectId: project.projectId, displayName: project.displayName },
+    roots: results
+  }
+}
+
+export async function runCodexMemoryMaintenance(input: {
+  cwd: string
+  now?: string
+}): Promise<CodexMemoryMaintenanceResult> {
+  const project = await identifyCodexProject(input.cwd)
+  const now = input.now ?? new Date().toISOString()
+  const config = createDefaultConfig(input.cwd)
+  const roots = await dreamRoots(project.projectId)
+  const results: CodexMemoryMaintenanceResult['roots'] = []
+
+  for (const memoryRoot of roots) {
+    await assertMemoryMaintenanceTargetsSafeFromRoot(memoryRoot)
+    const maintenance = await withMemoryMaintenanceLockFromRoot(memoryRoot, async (lockedRoot) => {
+      await assertMemoryMaintenanceTargetsSafeFromRoot(lockedRoot)
+      return runMemoryMaintenanceFromRootLocked({
+        memoryRoot: lockedRoot,
+        budget: maintenanceBudget(config),
+        now,
+        reason: 'codex memory maintenance'
+      })
+    })
+    results.push({ memoryRoot: maintenance.memoryRoot, maintenance })
   }
 
   return {

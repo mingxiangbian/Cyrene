@@ -412,7 +412,7 @@ export async function rejectCodexPendingMemory(input: {
   now?: string
 }): Promise<CodexPendingMemoryRejectResult> {
   const now = input.now ?? new Date().toISOString()
-  const { project, memoryRoot, pending, candidate } = await findPendingCandidateInCodexRoots(input.cwd, input.id)
+  const { project, memoryRoot, candidate } = await findPendingCandidateInCodexRoots(input.cwd, input.id)
   if (candidate === undefined) {
     return {
       project,
@@ -425,42 +425,60 @@ export async function rejectCodexPendingMemory(input: {
     }
   }
 
-  const latestReviewHash = reviewHashForPendingMemory(candidate)
-  if (latestReviewHash !== input.reviewHash) {
-    return {
-      project,
-      memoryRoot,
-      result: {
-        action: 'conflict',
-        candidateId: input.id,
-        reason: 'Pending memory candidate changed since review',
-        latest: summarizePendingMemory(candidate)
+  await assertMemoryMaintenanceTargetsSafeFromRoot(memoryRoot)
+  return withMemoryMaintenanceLockFromRoot(memoryRoot, async (lockedMemoryRoot) => {
+    await assertMemoryMaintenanceTargetsSafeFromRoot(lockedMemoryRoot)
+    const lockedPending = await readPendingMemoriesFromRoot(lockedMemoryRoot)
+    const lockedCandidate = lockedPending.find((memoryCandidate) => memoryCandidate.id === candidate.id)
+    if (lockedCandidate === undefined) {
+      return {
+        project,
+        memoryRoot: lockedMemoryRoot,
+        result: {
+          action: 'not_found',
+          candidateId: candidate.id,
+          reason: 'Pending memory candidate not found'
+        }
       }
     }
-  }
 
-  const tombstone = tombstoneForRejectedCandidate(candidate, now)
-  const nextPending = pending.filter((memoryCandidate) => memoryCandidate.id !== candidate.id)
-  await writePendingMemoriesFromRoot(memoryRoot, nextPending)
-  await appendTombstoneFromRoot(memoryRoot, tombstone)
-  await appendMemoryEventFromRoot(memoryRoot, {
-    id: randomUUID(),
-    action: 'reject',
-    at: now,
-    reason: input.reason ?? 'Rejected by Codex pending memory review',
-    candidateId: candidate.id
-  })
-
-  return {
-    project,
-    memoryRoot,
-    result: {
-      action: 'reject',
-      candidateId: candidate.id,
-      tombstone,
-      reviewHash: latestReviewHash
+    const latestReviewHash = reviewHashForPendingMemory(lockedCandidate)
+    if (latestReviewHash !== input.reviewHash) {
+      return {
+        project,
+        memoryRoot: lockedMemoryRoot,
+        result: {
+          action: 'conflict',
+          candidateId: candidate.id,
+          reason: 'Pending memory candidate changed since review',
+          latest: summarizePendingMemory(lockedCandidate)
+        }
+      }
     }
-  }
+
+    const tombstone = tombstoneForRejectedCandidate(lockedCandidate, now)
+    const nextPending = lockedPending.filter((memoryCandidate) => memoryCandidate.id !== lockedCandidate.id)
+    await writePendingMemoriesFromRoot(lockedMemoryRoot, nextPending)
+    await appendTombstoneFromRoot(lockedMemoryRoot, tombstone)
+    await appendMemoryEventFromRoot(lockedMemoryRoot, {
+      id: randomUUID(),
+      action: 'reject',
+      at: now,
+      reason: input.reason ?? 'Rejected by Codex pending memory review',
+      candidateId: lockedCandidate.id
+    })
+
+    return {
+      project,
+      memoryRoot: lockedMemoryRoot,
+      result: {
+        action: 'reject',
+        candidateId: lockedCandidate.id,
+        tombstone,
+        reviewHash: latestReviewHash
+      }
+    }
+  })
 }
 
 export async function getCodexPendingReviewNotice(input: { cwd: string }): Promise<CodexPendingReviewNotice> {

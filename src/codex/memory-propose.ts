@@ -4,6 +4,10 @@ import { markCodexMemoryDreamDue } from './memory-dream-state.js'
 import { summarizePendingMemory } from './memory-review.js'
 import { identifyCodexProject } from './project-id.js'
 import {
+  assertMemoryMaintenanceTargetsSafeFromRoot,
+  withMemoryMaintenanceLockFromRoot
+} from '../memory/memory-maintenance.js'
+import {
   appendMemoryEventFromRoot,
   appendTombstoneFromRoot,
   readActiveMemoriesFromRoot,
@@ -75,52 +79,56 @@ export async function proposeCodexMemoryCandidate(input: {
   const memoryRoot = candidate.scope === 'global'
     ? await ensureCodexGlobalMemoryRoot()
     : await ensureCodexProjectMemoryRoot(project.projectId)
-  const [existingMemories, tombstones] = await Promise.all([
-    readActiveMemoriesFromRoot(memoryRoot),
-    readTombstonesFromRoot(memoryRoot)
-  ])
-  const decision = validateMemoryCandidate({
-    candidate,
-    existingMemories,
-    tombstones,
-    now
-  })
-
-  if (decision.action === 'reject') {
-    await appendTombstoneFromRoot(memoryRoot, decision.tombstone)
-    await appendMemoryEventFromRoot(memoryRoot, {
-      id: randomUUID(),
-      action: 'reject',
-      at: now,
-      reason: decision.reason,
-      candidateId: decision.tombstone.id
+  await assertMemoryMaintenanceTargetsSafeFromRoot(memoryRoot)
+  return withMemoryMaintenanceLockFromRoot(memoryRoot, async (lockedMemoryRoot) => {
+    await assertMemoryMaintenanceTargetsSafeFromRoot(lockedMemoryRoot)
+    const [existingMemories, tombstones] = await Promise.all([
+      readActiveMemoriesFromRoot(lockedMemoryRoot),
+      readTombstonesFromRoot(lockedMemoryRoot)
+    ])
+    const decision = validateMemoryCandidate({
+      candidate,
+      existingMemories,
+      tombstones,
+      now
     })
+
+    if (decision.action === 'reject') {
+      await appendTombstoneFromRoot(lockedMemoryRoot, decision.tombstone)
+      await appendMemoryEventFromRoot(lockedMemoryRoot, {
+        id: randomUUID(),
+        action: 'reject',
+        at: now,
+        reason: decision.reason,
+        candidateId: decision.tombstone.id
+      })
+      return {
+        project: { projectId: project.projectId, displayName: project.displayName },
+        result: { action: 'reject', reason: decision.reason },
+        memoryRoot: lockedMemoryRoot
+      }
+    }
+
+    const pendingCandidate = decision.action === 'pending' ? decision.candidate : candidate
+    const merged = await upsertPendingMemoryFromRoot(lockedMemoryRoot, pendingCandidate)
+    await markDreamDueFailOpen(lockedMemoryRoot, now)
+    const reason =
+      decision.action === 'auto_write' ? `Pending-only Codex bridge downgraded auto-write: ${decision.reason}` : decision.reason
+
+    await appendMemoryEventFromRoot(lockedMemoryRoot, {
+      id: randomUUID(),
+      action: 'pending',
+      at: now,
+      reason,
+      candidateId: merged.id
+    })
+
     return {
       project: { projectId: project.projectId, displayName: project.displayName },
-      result: { action: 'reject', reason: decision.reason },
-      memoryRoot
+      result: { action: 'pending', candidateId: merged.id, reason, review: summarizePendingMemory(merged) },
+      memoryRoot: lockedMemoryRoot
     }
-  }
-
-  const pendingCandidate = decision.action === 'pending' ? decision.candidate : candidate
-  const merged = await upsertPendingMemoryFromRoot(memoryRoot, pendingCandidate)
-  await markDreamDueFailOpen(memoryRoot, now)
-  const reason =
-    decision.action === 'auto_write' ? `Pending-only Codex bridge downgraded auto-write: ${decision.reason}` : decision.reason
-
-  await appendMemoryEventFromRoot(memoryRoot, {
-    id: randomUUID(),
-    action: 'pending',
-    at: now,
-    reason,
-    candidateId: merged.id
   })
-
-  return {
-    project: { projectId: project.projectId, displayName: project.displayName },
-    result: { action: 'pending', candidateId: merged.id, reason, review: summarizePendingMemory(merged) },
-    memoryRoot
-  }
 }
 
 async function markDreamDueFailOpen(memoryRoot: string, now: string): Promise<void> {

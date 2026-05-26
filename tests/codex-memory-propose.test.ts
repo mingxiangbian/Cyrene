@@ -181,6 +181,33 @@ describe('Codex memory propose', () => {
     await expect(readFile(join(result.memoryRoot, 'index.jsonl'), 'utf8')).rejects.toMatchObject({ code: 'ENOENT' })
   })
 
+  it('does not write pending memory when the maintenance lock cannot be acquired', async () => {
+    const home = await createTempDir('cyrene-codex-propose-home-')
+    vi.stubEnv('HOME', home)
+    vi.stubEnv('CYRENE_MEMORY_MAINTENANCE_LOCK_TIMEOUT_MS', '1')
+    const cwd = await createTempDir('cyrene-codex-propose-project-')
+    const identity = await identifyCodexProject(cwd)
+    const memoryRoot = codexProjectMemoryRoot(identity.projectId)
+    await mkdir(memoryRoot, { recursive: true })
+    await mkdir(join(memoryRoot, '.maintenance.lock'))
+
+    await expect(
+      proposeCodexMemoryCandidate({
+        cwd,
+        candidate: {
+          domain: 'project',
+          type: 'project_fact',
+          content: 'Locked proposal should not write pending memory.',
+          source: 'user_explicit',
+          evidence: [{ runId: 'run-lock', summary: 'Lock coverage regression.' }]
+        }
+      })
+    ).rejects.toThrow(/maintenance lock/)
+
+    await expect(readFile(join(memoryRoot, 'pending.jsonl'), 'utf8')).rejects.toMatchObject({ code: 'ENOENT' })
+    await expect(readFile(join(memoryRoot, 'events.jsonl'), 'utf8')).rejects.toMatchObject({ code: 'ENOENT' })
+  })
+
   it('merges duplicate pending candidates', async () => {
     const home = await createTempDir('cyrene-codex-propose-home-')
     vi.stubEnv('HOME', home)

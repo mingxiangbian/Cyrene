@@ -1,6 +1,7 @@
 import { mkdir, mkdtemp, readdir, readFile, rm, symlink, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
+import { setTimeout as delay } from 'node:timers/promises'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { codexProjectMemoryRoot } from '../src/codex/codex-memory-root.js'
 import {
@@ -276,6 +277,46 @@ describe('Codex pending memory review', () => {
     await expect(readFile(join(memoryRoot, 'index.jsonl'), 'utf8')).rejects.toMatchObject({ code: 'ENOENT' })
     const pending = await readFile(join(memoryRoot, 'pending.jsonl'), 'utf8')
     expect(pending).toContain(changedCandidate.content)
+  })
+
+  it('reject re-reads pending under lock before mutating stale reviewed candidates', async () => {
+    const home = await createTempDir('cyrene-review-home-')
+    vi.stubEnv('HOME', home)
+    vi.stubEnv('CYRENE_MEMORY_MAINTENANCE_LOCK_TIMEOUT_MS', '1000')
+    const cwd = await createTempDir('cyrene-review-project-')
+    const reviewedCandidate = createPending()
+    const changedCandidate = createPending({
+      strength: 'soft',
+      scope: 'global',
+      content: 'Changed pending memory must survive stale reject.',
+      normalizedKey: 'changed-pending-memory-must-survive'
+    })
+    const memoryRoot = await seedPending(cwd, [reviewedCandidate])
+    const staleReviewHash = reviewHashForPendingMemory(reviewedCandidate)
+    const lockPath = join(memoryRoot, '.maintenance.lock')
+    await mkdir(lockPath)
+
+    const pendingReject = rejectCodexPendingMemory({
+      cwd,
+      id: reviewedCandidate.id,
+      reviewHash: staleReviewHash,
+      now: '2026-05-25T01:00:00.000Z'
+    })
+
+    try {
+      await delay(30)
+      await writeFile(join(memoryRoot, 'pending.jsonl'), `${JSON.stringify(changedCandidate)}\n`, 'utf8')
+      await rm(lockPath, { recursive: true, force: true })
+      const result = await pendingReject
+
+      expect(result.result.action).toBe('conflict')
+      const pending = await readFile(join(memoryRoot, 'pending.jsonl'), 'utf8')
+      expect(pending).toContain(changedCandidate.content)
+      await expect(readFile(join(memoryRoot, 'tombstones.jsonl'), 'utf8')).rejects.toMatchObject({ code: 'ENOENT' })
+      await expect(readFile(join(memoryRoot, 'events.jsonl'), 'utf8')).rejects.toMatchObject({ code: 'ENOENT' })
+    } finally {
+      await rm(lockPath, { recursive: true, force: true })
+    }
   })
 
   it('treats evidence grouping metadata as review-significant', () => {

@@ -6,7 +6,7 @@ import { promisify } from 'node:util'
 import { afterEach, describe, expect, it } from 'vitest'
 import { codexGlobalMemoryRoot, codexProjectMemoryRoot } from '../src/codex/codex-memory-root.js'
 import { identifyCodexProject } from '../src/codex/project-id.js'
-import type { PendingMemory } from '../src/memory/types.js'
+import type { CyreneMemory, PendingMemory } from '../src/memory/types.js'
 
 const execFileAsync = promisify(execFile)
 const originalHome = process.env.HOME
@@ -54,6 +54,31 @@ function createPending(): PendingMemory {
     firstSeenAt: '2026-05-25T00:00:00.000Z',
     lastSeenAt: '2026-05-25T01:00:00.000Z',
     expiresAt: '2026-06-24T00:00:00.000Z',
+    tags: ['cli']
+  }
+}
+
+function createActive(): CyreneMemory {
+  return {
+    id: 'cli-active-1',
+    domain: 'procedural',
+    type: 'procedural_rule',
+    strength: 'hard',
+    scope: 'project',
+    status: 'active',
+    content: 'CLI maintenance renders active memory into the model profile.',
+    normalizedKey: 'cli-maintenance-renders-profile',
+    evidence: [{ runId: 'run-active', sourceKind: 'user_explicit', summary: 'Active seed.' }],
+    source: 'user_explicit',
+    scores: {
+      evidenceStrength: 0.95,
+      stability: 0.9,
+      usefulness: 0.9,
+      safety: 0.95,
+      sensitivity: 0.1
+    },
+    createdAt: '2026-05-25T00:00:00.000Z',
+    updatedAt: '2026-05-25T00:00:00.000Z',
     tags: ['cli']
   }
 }
@@ -368,6 +393,29 @@ describe('cyrene codex CLI', () => {
     expect(result.stderr).toBe('')
     const parsed = JSON.parse(result.stdout) as { roots: Array<{ promoted: number }> }
     expect(parsed.roots.some((root) => root.promoted === 1)).toBe(true)
+  })
+
+  it('runs memory maintenance from the CLI without promoting pending memory', async () => {
+    const home = await createTempDir('cyrene-codex-cli-maintenance-home-')
+    process.env.HOME = home
+    const identity = await identifyCodexProject(process.cwd())
+    const memoryRoot = codexProjectMemoryRoot(identity.projectId)
+    await mkdir(memoryRoot, { recursive: true })
+    await writeFile(join(memoryRoot, 'index.jsonl'), `${JSON.stringify(createActive())}\n`)
+    await writeFile(join(memoryRoot, 'pending.jsonl'), `${JSON.stringify(createPending())}\n`)
+
+    const result = await execFileAsync(
+      process.execPath,
+      ['node_modules/tsx/dist/cli.mjs', 'src/main.ts', 'codex', 'memory', 'maintenance'],
+      { env: cliEnv(home) }
+    )
+
+    expect(result.stderr).toBe('')
+    const parsed = JSON.parse(result.stdout) as { roots: Array<{ maintenance: { activeCount: number; pendingCount: number }; promoted?: number }> }
+    expect(parsed.roots.some((root) => root.maintenance.activeCount === 1 && root.maintenance.pendingCount === 1)).toBe(true)
+    expect(parsed.roots.every((root) => root.promoted === undefined || root.promoted === 0)).toBe(true)
+    await expect(readFile(join(memoryRoot, 'pending.jsonl'), 'utf8')).resolves.toContain('CLI dream promotes repeated pending memory.')
+    await expect(readFile(join(memoryRoot, 'MODEL_PROFILE.md'), 'utf8')).resolves.toContain('CLI maintenance renders active memory into the model profile.')
   })
 
   it('rejects memory dream --stage without a value', async () => {

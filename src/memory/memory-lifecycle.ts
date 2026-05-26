@@ -4,14 +4,12 @@ import {
   appendMemoryEvent,
   appendTombstone,
   readActiveMemories,
-  readPendingMemories,
   readTombstones,
   upsertPendingMemory,
-  writeActiveMemories,
-  writePendingMemories
+  writeActiveMemories
 } from './memory-store.js'
 import type { CyreneMemory, MemoryDecision, PendingMemory } from './types.js'
-import { activateCandidate, isPromotablePending, validateMemoryCandidate } from './memory-validator.js'
+import { validateMemoryCandidate } from './memory-validator.js'
 
 export type ApplyMemoryDecisionResult =
   | { action: 'create'; memoryId: string }
@@ -40,32 +38,20 @@ export async function processMemoryCandidate(input: ProcessMemoryCandidateInput)
     now
   })
 
-  if (decision.action !== 'pending') {
+  if (decision.action === 'reject' || decision.action === 'update_existing' || decision.action === 'archive_existing') {
     return applyMemoryDecision(input.cwd, decision, now)
   }
 
-  const merged = await upsertPendingMemory(input.cwd, decision.candidate)
-  if (isPromotablePending(merged)) {
-    const active = activateCandidate(merged, now)
-    await writeActiveMemories(input.cwd, upsertActiveMemory(existingMemories, active))
-    await removePending(input.cwd, merged.id)
-    await appendMemoryEvent(input.cwd, {
-      id: randomUUID(),
-      action: 'promote',
-      at: now,
-      reason: 'Pending memory gathered repeated evidence',
-      memoryId: active.id,
-      candidateId: merged.id
-    })
-    await renderMemoryProjections(input.cwd)
-    return { action: 'promote', memoryId: active.id }
-  }
+  const pendingCandidate = decision.action === 'pending' ? decision.candidate : pendingCandidateFromAutoWrite(input.candidate, decision.memory)
+  const merged = await upsertPendingMemory(input.cwd, pendingCandidate)
+  const reason =
+    decision.action === 'auto_write' ? `Runtime memory processing downgraded auto-write: ${decision.reason}` : decision.reason
 
   await appendMemoryEvent(input.cwd, {
     id: randomUUID(),
     action: 'pending',
     at: now,
-    reason: decision.reason,
+    reason,
     candidateId: merged.id
   })
   return { action: 'pending', candidateId: merged.id }
@@ -157,7 +143,21 @@ function upsertActiveMemory(active: CyreneMemory[], memory: CyreneMemory): Cyren
   return next
 }
 
-async function removePending(cwd: string, pendingId: string): Promise<void> {
-  const pending = await readPendingMemories(cwd)
-  await writePendingMemories(cwd, pending.filter((candidate) => candidate.id !== pendingId))
+function pendingCandidateFromAutoWrite(candidate: PendingMemory, memory: CyreneMemory): PendingMemory {
+  return {
+    ...candidate,
+    domain: memory.domain,
+    type: memory.type,
+    strength: memory.strength,
+    scope: memory.scope,
+    status: 'pending',
+    content: memory.content,
+    normalizedKey: memory.normalizedKey,
+    evidence: memory.evidence,
+    source: memory.source,
+    scores: memory.scores,
+    userConfirmed: memory.userConfirmed,
+    tags: memory.tags,
+    ...(memory.profileVisibility === undefined ? {} : { profileVisibility: memory.profileVisibility })
+  }
 }

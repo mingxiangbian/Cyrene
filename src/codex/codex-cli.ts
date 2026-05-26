@@ -2,7 +2,12 @@ import { formatCodexDoctor } from './codex-doctor.js'
 import { formatCodexStopHookInstall, installCodexStopHook } from './codex-hook-install.js'
 import { handleCodexStopHookCommand } from './codex-hook-stop.js'
 import { installCodexDevBridge } from './codex-install.js'
-import { getCodexMemoryProfile, runCodexMemoryDream, type CodexMemoryDreamStage } from './memory-dream.js'
+import {
+  getCodexMemoryProfile,
+  runCodexMemoryDream,
+  runCodexMemoryMaintenance,
+  type CodexMemoryDreamStage
+} from './memory-dream.js'
 
 export async function handleCodexCommand(input: { cwd: string; args: string[] }): Promise<void> {
   const command = input.args[0]
@@ -41,7 +46,12 @@ export async function handleCodexCommand(input: { cwd: string; args: string[] })
     return
   }
 
-  console.error('Usage: cyrene codex <doctor [--config <path>]|install --dev|install-hook --stop [--dry-run]|hook stop|memory dream [--stage light|rem|deep]|memory profile>')
+  if (command === 'memory' && input.args[1] === 'maintenance') {
+    process.stdout.write(`${JSON.stringify(await runCodexMemoryMaintenance({ cwd: input.cwd }), null, 2)}\n`)
+    return
+  }
+
+  console.error('Usage: cyrene codex <doctor [--config <path>]|install --dev|install-hook --stop [--dry-run]|hook stop|memory dream [--stage light|rem|deep]|memory maintenance|memory profile>')
   process.exit(1)
 }
 
