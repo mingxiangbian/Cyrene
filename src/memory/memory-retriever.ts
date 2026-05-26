@@ -1,3 +1,4 @@
+import { estimateTokens } from '../token-counter.js'
 import { readActiveMemories, readActiveMemoriesFromRoot } from './memory-store.js'
 import type { CyreneMemory, MemoryDomain, MemoryScope, MemoryStrength, MemoryType } from './types.js'
 
@@ -20,6 +21,18 @@ export interface RetrieveMemoriesInput {
 export interface RetrievedMemory {
   memory: CyreneMemory
   score: number
+}
+
+export interface MemoryRetrievalBudget {
+  maxItems: number
+  maxTokens: number
+}
+
+export function memoryRetrievalBudgetForTask(task: NonNullable<RetrieveMemoriesInput['task']>): MemoryRetrievalBudget {
+  if (task === 'coding' || task === 'debugging') return { maxItems: 12, maxTokens: 2_000 }
+  if (task === 'planning') return { maxItems: 16, maxTokens: 3_000 }
+  if (task === 'memory') return { maxItems: 24, maxTokens: 4_000 }
+  return { maxItems: 10, maxTokens: 1_500 }
 }
 
 export async function retrieveMemories(input: RetrieveMemoriesInput): Promise<RetrievedMemory[]> {
@@ -181,8 +194,4 @@ function tokenize(text: string): string[] {
     .split(/[^a-z0-9_]+/)
     .map((token) => token.trim())
     .filter(Boolean)
-}
-
-function estimateTokens(text: string): number {
-  return Math.max(1, text.split(/\s+/).filter(Boolean).length)
 }

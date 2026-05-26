@@ -5,7 +5,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import { codexProjectMemoryRoot } from '../src/codex/codex-memory-root.js'
 import { runCodexReviewSummary } from '../src/codex/review-summary-runtime.js'
 import { identifyCodexProject } from '../src/codex/project-id.js'
-import type { AppConfig } from '../src/config.js'
+import { createDefaultConfig, type AppConfig } from '../src/config.js'
 import type { CallModelInput, ModelResponse } from '../src/llm-client.js'
 
 const originalHome = process.env.HOME
@@ -25,6 +25,7 @@ async function createTempDir(prefix: string): Promise<string> {
 
 function createConfig(cwd: string): AppConfig {
   return {
+    ...createDefaultConfig(cwd),
     cwd,
     memoryCwd: cwd,
     model: {
@@ -52,17 +53,6 @@ function createConfig(cwd: string): AppConfig {
     microcompactKeepRecentRounds: 5,
     userCyreneDir: join(cwd, '.cyrene'),
     sessionResumeRecentMessages: 40,
-    memoryAutoExtractEnabled: true,
-    evolutionEnabled: false,
-    evolutionReflectionMode: 'manual',
-    memoryMaxLines: 200,
-    memoryMaxLineLength: 150,
-    readMaxInlineLines: 500,
-    grepMaxMatches: 30,
-    bashTimeoutMs: 120_000,
-    llmRequestTimeoutMs: 180_000,
-    llmRetryMaxAttempts: 3,
-    llmRetryBaseDelayMs: 1_000,
     readableRoots: [cwd],
     writableRoots: [cwd],
     bashDenyPatterns: []

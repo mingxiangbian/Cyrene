@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { promisify } from 'node:util'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { codexProjectMemoryRoot } from '../src/codex/codex-memory-root.js'
+import { codexGlobalMemoryRoot, codexProjectMemoryRoot } from '../src/codex/codex-memory-root.js'
 import { getCodexContinuityContext } from '../src/codex/continuity-context.js'
 import { identifyCodexProject } from '../src/codex/project-id.js'
 import type { CyreneMemory, PendingMemory } from '../src/memory/types.js'
@@ -36,6 +36,7 @@ describe('Codex continuity context', () => {
     const memoryRoot = codexProjectMemoryRoot(identity.projectId)
     await mkdir(memoryRoot, { recursive: true })
     await writeFile(join(memoryRoot, 'index.jsonl'), JSON.stringify(createMemory()) + '\n')
+    await writeFile(join(memoryRoot, 'MODEL_PROFILE.md'), '# Project Profile\n\nProject profile guidance.\n')
 
     const context = await getCodexContinuityContext({
       cwd: repo,
@@ -58,7 +59,35 @@ describe('Codex continuity context', () => {
     ])
     expect(context.strategy.shouldChallengeUser).toBe(true)
     expect(context.dissent.shouldChallenge).toBe(true)
+    expect(context.profile.project).toBe('# Project Profile\n\nProject profile guidance.')
+    expect(context.profile.content).toBe('# Project Profile\n\nProject profile guidance.')
     expect(JSON.stringify(context)).not.toContain('git@github.com')
+  })
+
+  it('returns global and project model profile content', async () => {
+    const home = await createTempDir('cyrene-codex-continuity-profile-home-')
+    process.env.HOME = home
+    const repo = await createTempDir('cyrene-codex-continuity-profile-repo-')
+    const identity = await identifyCodexProject(repo)
+    const projectMemoryRoot = codexProjectMemoryRoot(identity.projectId)
+    const globalMemoryRoot = codexGlobalMemoryRoot()
+    await mkdir(projectMemoryRoot, { recursive: true })
+    await mkdir(globalMemoryRoot, { recursive: true })
+    await writeFile(join(globalMemoryRoot, 'MODEL_PROFILE.md'), '# Global Profile\n\nUse global continuity.\n')
+    await writeFile(join(projectMemoryRoot, 'MODEL_PROFILE.md'), '# Project Profile\n\nUse project continuity.\n')
+
+    const context = await getCodexContinuityContext({
+      cwd: repo,
+      userMessage: 'What continuity profile applies?',
+      task: 'coding'
+    })
+
+    expect(context.profile.global).toBe('# Global Profile\n\nUse global continuity.')
+    expect(context.profile.project).toBe('# Project Profile\n\nUse project continuity.')
+    expect(context.profile.content).toBe([
+      '# Global Profile\n\nUse global continuity.',
+      '# Project Profile\n\nUse project continuity.'
+    ].join('\n\n'))
   })
 
   it('includes global active memory from the Codex global memory root in any project context', async () => {
@@ -139,6 +168,7 @@ describe('Codex continuity context', () => {
       newestPreview: pending.content
     })
     expect(context.memory.items).toEqual([])
+    expect(context.profile.content).not.toContain(pending.content)
   })
 })
 

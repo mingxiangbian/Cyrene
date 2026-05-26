@@ -1,5 +1,5 @@
 import { readFile } from 'node:fs/promises'
-import { dirname, resolve } from 'node:path'
+import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import type { AppConfig } from '../config.js'
 import { createDefaultConfig } from '../config.js'
@@ -8,7 +8,7 @@ import type { ContinuitySnapshot } from '../affect/types.js'
 import type { CallModelInput, ModelResponse } from '../llm-client.js'
 import { contextInfoForRoute } from '../models/provider-router.js'
 import type { ThinkingMode } from '../models/types.js'
-import { formatMemoryContext, retrieveMemories } from '../memory/memory-retriever.js'
+import { formatMemoryContext, memoryRetrievalBudgetForTask, retrieveMemories } from '../memory/memory-retriever.js'
 import {
   loadInstructionsIfExists,
   loadRuleStack,
@@ -47,19 +47,23 @@ export async function buildAgentRuntime(
   const persona = await loadSoul(config.userCyreneDir, config.cwd)
   const rules = await loadRuleStack(config.cwd, config.userCyreneDir)
   const projectInstructions = await loadInstructionsIfExists(config.cwd)
+  const memoryTask = overrides.memoryTask ?? 'memory'
+  const memoryBudget = memoryRetrievalBudgetForTask(memoryTask)
   const memories = await retrieveMemories({
     cwd: config.memoryCwd,
     userCyreneDir: config.userCyreneDir,
     query: overrides.memoryQuery ?? '',
-    task: overrides.memoryTask ?? 'memory',
-    maxItems: 8,
-    maxTokens: 1200
+    task: memoryTask,
+    maxItems: memoryBudget.maxItems,
+    maxTokens: memoryBudget.maxTokens
   })
+  const modelProfile = config.memoryProfileAlwaysOnEnabled ? await readModelProfileIfExists(config.memoryCwd) : ''
+  const modelProfileContext = modelProfile === '' ? '' : `## Model Profile\n${modelProfile}`
   const memoryContext = formatMemoryContext(memories)
   const continuitySnapshot = await buildContinuitySnapshot({
     config,
     userMessage: overrides.memoryQuery ?? '',
-    task: overrides.memoryTask ?? 'memory',
+    task: memoryTask,
     memories: memories.map(({ memory }) => memory),
     generatedAt: currentDate.toISOString(),
     callModel: overrides.callModel
@@ -72,6 +76,7 @@ export async function buildAgentRuntime(
     persona,
     rules,
     projectInstructions,
+    modelProfileContext,
     memoryContext,
     continuityPolicy
   ]
@@ -84,6 +89,21 @@ export async function buildAgentRuntime(
     tools: createCoreTools(config),
     continuitySnapshot
   }
+}
+
+async function readModelProfileIfExists(memoryCwd: string): Promise<string> {
+  try {
+    return (await readFile(join(memoryCwd, '.cyrene', 'memory', 'MODEL_PROFILE.md'), 'utf8')).trim()
+  } catch (error) {
+    if (isFileErrorCode(error, 'ENOENT')) {
+      return ''
+    }
+    throw error
+  }
+}
+
+function isFileErrorCode(error: unknown, code: string): boolean {
+  return error instanceof Error && 'code' in error && error.code === code
 }
 
 function applyRuntimeOverrides(config: AppConfig, overrides: AgentRuntimeOverrides): AppConfig {

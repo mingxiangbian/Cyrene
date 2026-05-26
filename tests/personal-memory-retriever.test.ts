@@ -3,7 +3,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
 import { renderMemoryProjections } from '../src/memory/memory-exporter.js'
-import { formatMemoryContext, retrieveMemories } from '../src/memory/memory-retriever.js'
+import { formatMemoryContext, memoryRetrievalBudgetForTask, retrieveMemories } from '../src/memory/memory-retriever.js'
 import { writeActiveMemories } from '../src/memory/memory-store.js'
 import type { CyreneMemory, MemoryDomain, MemoryProfileVisibility, MemorySource, MemoryStrength, MemoryType } from '../src/memory/types.js'
 
@@ -205,11 +205,34 @@ describe('personal memory projections and retrieval', () => {
       query: 'provider',
       task: 'memory',
       maxItems: 2,
-      maxTokens: 12
+      maxTokens: 20
     })
 
     expect(memories).toHaveLength(2)
     expect(formatMemoryContext(memories).split(/\s+/).length).toBeLessThanOrEqual(20)
+  })
+
+  it('respects CJK maxTokens with character-aware estimates', async () => {
+    const cwd = await createTempDir()
+    await writeActiveMemories(cwd, [
+      createMemory({ id: 'one', content: '项目记忆需要严格控制上下文预算。' }),
+      createMemory({ id: 'two', content: '项目记忆继续补充中文上下文预算。' })
+    ])
+
+    const memories = await retrieveMemories({
+      cwd,
+      userCyreneDir: join(cwd, '.cyrene'),
+      query: '',
+      task: 'memory',
+      maxItems: 10,
+      maxTokens: 20
+    })
+
+    expect(memories.map((memory) => memory.memory.id)).toEqual(['one'])
+  })
+
+  it('returns planning retrieval budget', () => {
+    expect(memoryRetrievalBudgetForTask('planning')).toEqual({ maxItems: 16, maxTokens: 3000 })
   })
 })
 

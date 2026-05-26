@@ -190,6 +190,22 @@ describe('createDefaultConfig', () => {
     expect(config.userCyreneDir).toBe(join(homedir(), '.cyrene'))
     expect(config.sessionResumeRecentMessages).toBe(40)
     expect(config.memoryAutoExtractEnabled).toBe(true)
+    expect(config.memoryAutoPromoteEnabled).toBe(true)
+    expect(config.memoryActiveMaxItems).toBe(300)
+    expect(config.memoryActiveContentMaxChars).toBe(50_000)
+    expect(config.memoryIndexFileMaxChars).toBe(250_000)
+    expect(config.memorySingleContentMaxChars).toBe(300)
+    expect(config.memorySingleEvidenceMaxChars).toBe(1_000)
+    expect(config.memoryPendingMaxItems).toBe(100)
+    expect(config.memoryProfileMaxChars).toBe(6_000)
+    expect(config.memoryProfileAlwaysOnEnabled).toBe(true)
+    expect(config.memoryMaintenanceSnapshotsMax).toBe(20)
+    expect(config.memoryDreamEnabled).toBe(true)
+    expect(config.memoryDreamIntervalHours).toBe(24)
+    expect(config.memoryDreamCatchUpEnabled).toBe(true)
+    expect(config.memoryDreamLockTtlMs).toBe(15 * 60 * 1000)
+    expect(config.memoryDreamMaxRuntimeMs).toBe(60_000)
+    expect(config.memoryDreamModel).toBeUndefined()
     expect(config.evolutionEnabled).toBe(false)
     expect(config.evolutionReflectionMode).toBe('manual')
     expect(config.memoryMaxLines).toBe(200)
@@ -206,6 +222,20 @@ describe('createDefaultConfig', () => {
 
     expect(config.evolutionEnabled).toBe(true)
     expect(config.evolutionReflectionMode).toBe('light')
+  })
+
+  it('uses Phase C-D memory environment overrides', () => {
+    vi.stubEnv('CYRENE_MEMORY_AUTO_PROMOTE', '0')
+    vi.stubEnv('CYRENE_MEMORY_ACTIVE_MAX_ITEMS', '42')
+    vi.stubEnv('CYRENE_MEMORY_PROFILE_ALWAYS_ON', 'false')
+    vi.stubEnv('CYRENE_MEMORY_DREAM_MODEL', 'dream-model')
+
+    const config = createDefaultConfig('/tmp/project')
+
+    expect(config.memoryAutoPromoteEnabled).toBe(false)
+    expect(config.memoryActiveMaxItems).toBe(42)
+    expect(config.memoryProfileAlwaysOnEnabled).toBe(false)
+    expect(config.memoryDreamModel).toBe('dream-model')
   })
 
   it('falls back to manual reflection mode for invalid values', () => {

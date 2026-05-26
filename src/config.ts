@@ -39,6 +39,22 @@ export interface AppConfig {
   userCyreneDir: string
   sessionResumeRecentMessages: number
   memoryAutoExtractEnabled: boolean
+  memoryAutoPromoteEnabled: boolean
+  memoryActiveMaxItems: number
+  memoryActiveContentMaxChars: number
+  memoryIndexFileMaxChars: number
+  memorySingleContentMaxChars: number
+  memorySingleEvidenceMaxChars: number
+  memoryPendingMaxItems: number
+  memoryProfileMaxChars: number
+  memoryProfileAlwaysOnEnabled: boolean
+  memoryMaintenanceSnapshotsMax: number
+  memoryDreamEnabled: boolean
+  memoryDreamIntervalHours: number
+  memoryDreamCatchUpEnabled: boolean
+  memoryDreamLockTtlMs: number
+  memoryDreamMaxRuntimeMs: number
+  memoryDreamModel?: string
   evolutionEnabled: boolean
   evolutionReflectionMode: EvolutionReflectionMode
   memoryMaxLines: number
@@ -183,6 +199,22 @@ export function createDefaultConfig(cwd: string): AppConfig {
     userCyreneDir: join(homedir(), '.cyrene'),
     sessionResumeRecentMessages: 40,
     memoryAutoExtractEnabled: parseBooleanEnv(envValue(dotEnv, 'CYRENE_MEMORY_AUTO_EXTRACT'), true),
+    memoryAutoPromoteEnabled: parseBooleanEnv(envValue(dotEnv, 'CYRENE_MEMORY_AUTO_PROMOTE'), true),
+    memoryActiveMaxItems: parsePositiveIntEnv(envValue(dotEnv, 'CYRENE_MEMORY_ACTIVE_MAX_ITEMS'), 300),
+    memoryActiveContentMaxChars: parsePositiveIntEnv(envValue(dotEnv, 'CYRENE_MEMORY_ACTIVE_CONTENT_MAX_CHARS'), 50_000),
+    memoryIndexFileMaxChars: parsePositiveIntEnv(envValue(dotEnv, 'CYRENE_MEMORY_INDEX_FILE_MAX_CHARS'), 250_000),
+    memorySingleContentMaxChars: parsePositiveIntEnv(envValue(dotEnv, 'CYRENE_MEMORY_SINGLE_CONTENT_MAX_CHARS'), 300),
+    memorySingleEvidenceMaxChars: parsePositiveIntEnv(envValue(dotEnv, 'CYRENE_MEMORY_SINGLE_EVIDENCE_MAX_CHARS'), 1_000),
+    memoryPendingMaxItems: parsePositiveIntEnv(envValue(dotEnv, 'CYRENE_MEMORY_PENDING_MAX_ITEMS'), 100),
+    memoryProfileMaxChars: parsePositiveIntEnv(envValue(dotEnv, 'CYRENE_MEMORY_PROFILE_MAX_CHARS'), 6_000),
+    memoryProfileAlwaysOnEnabled: parseBooleanEnv(envValue(dotEnv, 'CYRENE_MEMORY_PROFILE_ALWAYS_ON'), true),
+    memoryMaintenanceSnapshotsMax: parsePositiveIntEnv(envValue(dotEnv, 'CYRENE_MEMORY_MAINTENANCE_SNAPSHOTS_MAX'), 20),
+    memoryDreamEnabled: parseBooleanEnv(envValue(dotEnv, 'CYRENE_MEMORY_DREAM_ENABLED'), true),
+    memoryDreamIntervalHours: parsePositiveIntEnv(envValue(dotEnv, 'CYRENE_MEMORY_DREAM_INTERVAL_HOURS'), 24),
+    memoryDreamCatchUpEnabled: parseBooleanEnv(envValue(dotEnv, 'CYRENE_MEMORY_DREAM_CATCH_UP'), true),
+    memoryDreamLockTtlMs: parsePositiveIntEnv(envValue(dotEnv, 'CYRENE_MEMORY_DREAM_LOCK_TTL_MS'), 15 * 60 * 1000),
+    memoryDreamMaxRuntimeMs: parsePositiveIntEnv(envValue(dotEnv, 'CYRENE_MEMORY_DREAM_MAX_RUNTIME_MS'), 60_000),
+    memoryDreamModel: optionalEnvValue(dotEnv, 'CYRENE_MEMORY_DREAM_MODEL'),
     evolutionEnabled: parseBooleanEnv(envValue(dotEnv, 'CYRENE_EVOLUTION_ENABLED'), false),
     evolutionReflectionMode: parseEvolutionReflectionMode(envValue(dotEnv, 'CYRENE_EVOLUTION_REFLECTION_MODE')),
     memoryMaxLines: 200,

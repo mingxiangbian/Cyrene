@@ -40,6 +40,7 @@ describe('buildAgentRuntime', () => {
     await writeFile(join(home, 'workspace', '.cyrene', 'Rule.md'), 'Workspace rule.\n')
     await writeFile(join(root, '.cyrene', 'Rule.md'), 'Project rule.\n')
     await writeFile(join(root, '.cyrene', 'instructions.md'), 'Use TDD.\n')
+    await writeFile(join(root, '.cyrene', 'memory', 'MODEL_PROFILE.md'), '# Cyrene Model Profile\n\nPrefer profile guidance.\n')
     await writeActiveMemories(root, [
       createMemory({
         id: 'project-style',
@@ -76,6 +77,7 @@ describe('buildAgentRuntime', () => {
       'Workspace rule.',
       'Project rule.',
       '## Project Instructions\n\nUse TDD.',
+      '## Model Profile\n# Cyrene Model Profile\n\nPrefer profile guidance.',
       '## Relevant Memory\n- Prefer small patches.',
       '## Continuity Response Policy'
     ]

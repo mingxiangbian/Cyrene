@@ -1,7 +1,9 @@
+import { readFile } from 'node:fs/promises'
+import { join } from 'node:path'
 import { buildContinuitySnapshot } from '../affect/affect-runtime.js'
 import type { PrincipledDissentPolicy } from '../affect/types.js'
 import { createDefaultConfig } from '../config.js'
-import { retrieveMemories } from '../memory/memory-retriever.js'
+import { memoryRetrievalBudgetForTask, retrieveMemories } from '../memory/memory-retriever.js'
 import type { RetrieveMemoriesInput } from '../memory/memory-retriever.js'
 import { readActiveMemoriesFromRoot } from '../memory/memory-store.js'
 import type { CyreneMemory } from '../memory/types.js'
@@ -30,6 +32,11 @@ export interface CodexContinuityContext {
       content: string
     }>
   }
+  profile: {
+    global?: string
+    project?: string
+    content: string
+  }
   pendingReview: CodexPendingReviewNotice
   strategy: {
     tone: string
@@ -52,19 +59,25 @@ export async function getCodexContinuityContext(input: {
   const project = await identifyCodexProject(input.cwd)
   const config = createDefaultConfig(input.cwd)
   const task = input.task ?? 'coding'
-  const [memories, pendingReview] = await Promise.all([
+  const globalMemoryRoot = codexGlobalMemoryRoot()
+  const projectMemoryRoot = codexProjectMemoryRoot(project.projectId)
+  const budget = memoryRetrievalBudgetForTask(task)
+  const [memories, pendingReview, globalProfile, projectProfile] = await Promise.all([
     retrieveMemories({
       cwd: input.cwd,
       userCyreneDir: config.userCyreneDir,
-      memoryRoots: [codexGlobalMemoryRoot(), codexProjectMemoryRoot(project.projectId)],
+      memoryRoots: [globalMemoryRoot, projectMemoryRoot],
       extraMemories: await readLegacyGlobalCodexMemories(project.projectId),
       query: input.userMessage,
       task,
-      maxItems: 8,
-      maxTokens: 1200
+      maxItems: budget.maxItems,
+      maxTokens: budget.maxTokens
     }),
-    getCodexPendingReviewNotice({ cwd: input.cwd })
+    getCodexPendingReviewNotice({ cwd: input.cwd }),
+    readProfileIfExists(globalMemoryRoot),
+    readProfileIfExists(projectMemoryRoot)
   ])
+  const profileContent = [globalProfile, projectProfile].filter(Boolean).join('\n\n')
   const snapshot = await buildContinuitySnapshot({
     config: {
       ...config,
@@ -90,6 +103,11 @@ export async function getCodexContinuityContext(input: {
         content: memory.content
       }))
     },
+    profile: {
+      global: globalProfile,
+      project: projectProfile,
+      content: profileContent
+    },
     pendingReview,
     strategy: {
       tone: snapshot.strategy.tone,
@@ -109,6 +127,17 @@ export async function getCodexContinuityContext(input: {
   }
 }
 
+async function readProfileIfExists(root: string): Promise<string | undefined> {
+  try {
+    return (await readFile(join(root, 'MODEL_PROFILE.md'), 'utf8')).trim()
+  } catch (error) {
+    if (isFileErrorCode(error, 'ENOENT')) {
+      return undefined
+    }
+    throw error
+  }
+}
+
 async function readLegacyGlobalCodexMemories(currentProjectId: string): Promise<CyreneMemory[]> {
   const currentProjectMemoryRoot = codexProjectMemoryRoot(currentProjectId)
   const roots = await getReadableCodexProjectMemoryRoots()
@@ -118,4 +147,8 @@ async function readLegacyGlobalCodexMemories(currentProjectId: string): Promise<
       .map(async (root) => (await readActiveMemoriesFromRoot(root)).filter((memory) => memory.scope === 'global'))
   )
   return legacy.flat()
+}
+
+function isFileErrorCode(error: unknown, code: string): boolean {
+  return error instanceof Error && 'code' in error && error.code === code
 }
