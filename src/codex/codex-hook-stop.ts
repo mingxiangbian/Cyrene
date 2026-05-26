@@ -1,5 +1,9 @@
 import { readFile } from 'node:fs/promises'
+import { createDefaultConfig, type AppConfig } from '../config.js'
+import { callModel as defaultCallModel } from '../llm-client.js'
 import { proposeCodexMemoryCandidate } from './memory-propose.js'
+import { runCodexReviewSummary, type RunCodexReviewSummaryInput } from './review-summary-runtime.js'
+import { parseTranscriptMessages, type TranscriptMessage } from './transcript.js'
 
 export interface CodexStopHookPayload {
   cwd?: unknown
@@ -13,20 +17,40 @@ export interface CodexStopHookPayload {
 
 export type CodexStopHookResult =
   | { action: 'noop'; reason: string }
-  | { action: 'pending'; candidateId: string; reason: string }
-  | { action: 'reject'; reason: string }
+  | { action: 'summary'; summaryId: string; reason: string }
+  | { action: 'pending'; candidateId?: string; candidateIds?: string[]; reason: string; summaryId?: string }
+  | { action: 'reject'; reason: string; summaryId?: string }
+  | { action: 'summary_failed'; reason: string; summaryId?: string }
 
-interface TranscriptMessage {
-  role: string
-  content: string
+export interface CodexStopHookDeps {
+  callModel?: RunCodexReviewSummaryInput['callModel']
+  config?: AppConfig
+}
+
+export interface CodexStopHookCommandOutput {
+  continue: true
+  suppressOutput: true
 }
 
 const DURABLE_SIGNAL = /记住|请记住|以后默认|之后默认|以后你要|以后请|from now on|please remember|remember that|default to/i
 
 export async function handleCodexStopHookCommand(): Promise<string> {
-  const payload = await readJsonFromStdin()
-  const result = await handleCodexStopHookPayload(payload)
-  return `${JSON.stringify(result, null, 2)}\n`
+  let result: CodexStopHookResult
+  try {
+    const payload = await readJsonFromStdin()
+    result = await handleCodexStopHookPayload(payload)
+  } catch {
+    result = { action: 'summary_failed', reason: 'Stop hook command failed.' }
+  }
+  return formatCodexStopHookCommandOutput(result)
+}
+
+export function formatCodexStopHookCommandOutput(_result: CodexStopHookResult): string {
+  const output: CodexStopHookCommandOutput = {
+    continue: true,
+    suppressOutput: true
+  }
+  return `${JSON.stringify(output)}\n`
 }
 
 export async function readJsonFromStdin(): Promise<CodexStopHookPayload> {
@@ -39,16 +63,78 @@ export async function readJsonFromStdin(): Promise<CodexStopHookPayload> {
   return trimmed === '' ? {} : JSON.parse(trimmed) as CodexStopHookPayload
 }
 
-export async function handleCodexStopHookPayload(payload: CodexStopHookPayload): Promise<CodexStopHookResult> {
-  const instruction = await extractRecentExplicitMemoryInstruction(payload)
-  if (instruction === undefined) {
-    return { action: 'noop', reason: 'No explicit durable user instruction found.' }
+export async function handleCodexStopHookPayload(
+  payload: CodexStopHookPayload,
+  deps: CodexStopHookDeps = {}
+): Promise<CodexStopHookResult> {
+  const cwd = asString(payload.cwd) ?? process.cwd()
+  const transcriptPath = asString(payload.transcript_path) ?? asString(payload.transcriptPath)
+  if (transcriptPath === undefined) {
+    return { action: 'noop', reason: 'No transcript path provided.' }
   }
 
+  const transcriptText = await readTranscriptText(transcriptPath)
+  if (transcriptText === undefined) {
+    return { action: 'noop', reason: 'No transcript messages found.' }
+  }
+
+  const messages = parseTranscriptMessages(transcriptText)
+  if (messages.length === 0) {
+    return { action: 'noop', reason: 'No transcript messages found.' }
+  }
+
+  const config = deps.config ?? createDefaultConfig(cwd)
+  const review = await runCodexReviewSummary({
+    cwd,
+    sessionId: asString(payload.session_id),
+    turnId: asString(payload.turn_id),
+    messages,
+    config,
+    callModel: deps.callModel ?? defaultCallModel,
+    signal: AbortSignal.timeout(20_000)
+  })
+  const instruction = extractRecentExplicitMemoryInstructionFromMessages(messages)
+  const explicitResult = instruction === undefined
+    ? undefined
+    : await proposeExplicitMemoryCandidate(payload, cwd, instruction)
+
+  const reviewCandidateIds = review.action === 'pending' ? review.candidateIds : []
+  const explicitPending = explicitResult?.result.action === 'pending' ? explicitResult.result : undefined
+  const explicitCandidateId = explicitPending?.candidateId
+  const candidateIds = [...reviewCandidateIds, ...(explicitCandidateId === undefined ? [] : [explicitCandidateId])]
+  const summaryId = 'summaryId' in review ? review.summaryId : undefined
+
+  if (candidateIds.length > 0) {
+    return {
+      action: 'pending',
+      candidateId: explicitCandidateId,
+      candidateIds,
+      reason: explicitPending?.reason ?? 'Codex review summary proposed memory candidates.',
+      summaryId
+    }
+  }
+
+  if (review.action === 'summary') {
+    return { action: 'summary', summaryId: review.summaryId, reason: 'Codex review summary written.' }
+  }
+  if (review.action === 'summary_failed') {
+    return { action: 'summary_failed', summaryId: review.summaryId, reason: review.reason }
+  }
+  if (review.action === 'noop') {
+    return { action: 'noop', reason: review.reason }
+  }
+  return { action: 'noop', reason: 'Codex review summary proposed no memory candidates.' }
+}
+
+async function proposeExplicitMemoryCandidate(
+  payload: CodexStopHookPayload,
+  cwd: string,
+  instruction: string
+): Promise<Awaited<ReturnType<typeof proposeCodexMemoryCandidate>>> {
   const runId = [asString(payload.session_id), asString(payload.turn_id)].filter(Boolean).join(':') || undefined
   const content = instruction.slice(0, 500)
-  const result = await proposeCodexMemoryCandidate({
-    cwd: asString(payload.cwd) ?? process.cwd(),
+  return proposeCodexMemoryCandidate({
+    cwd,
     candidate: {
       domain: 'procedural',
       type: 'procedural_rule',
@@ -66,11 +152,6 @@ export async function handleCodexStopHookPayload(payload: CodexStopHookPayload):
       tags: ['codex-hook', 'explicit-memory']
     }
   })
-
-  if (result.result.action === 'reject') {
-    return { action: 'reject', reason: result.result.reason }
-  }
-  return { action: 'pending', candidateId: result.result.candidateId, reason: result.result.reason }
 }
 
 export async function extractRecentExplicitMemoryInstruction(payload: CodexStopHookPayload): Promise<string | undefined> {
@@ -79,69 +160,31 @@ export async function extractRecentExplicitMemoryInstruction(payload: CodexStopH
     return undefined
   }
 
-  let transcriptText: string
+  const transcriptText = await readTranscriptText(transcriptPath)
+  if (transcriptText === undefined) {
+    return undefined
+  }
+
+  const messages = parseTranscriptMessages(transcriptText)
+  return extractRecentExplicitMemoryInstructionFromMessages(messages)
+}
+
+function extractRecentExplicitMemoryInstructionFromMessages(messages: TranscriptMessage[]): string | undefined {
+  const userMessages = messages.filter((message) => message.role === 'user')
+  return userMessages.reverse().find((message) => DURABLE_SIGNAL.test(message.content))?.content
+}
+
+async function readTranscriptText(transcriptPath: string): Promise<string | undefined> {
   try {
-    transcriptText = await readFile(transcriptPath, 'utf8')
+    return await readFile(transcriptPath, 'utf8')
   } catch (error) {
     if (error instanceof Error && 'code' in error && error.code === 'ENOENT') {
       return undefined
     }
     throw error
   }
-
-  const messages = parseTranscriptMessages(transcriptText)
-  const userMessages = messages.filter((message) => message.role === 'user')
-  return userMessages.reverse().find((message) => DURABLE_SIGNAL.test(message.content))?.content
-}
-
-export function parseTranscriptMessages(text: string): TranscriptMessage[] {
-  return text
-    .split(/\r?\n/)
-    .map((line) => line.trim())
-    .filter(Boolean)
-    .flatMap((line) => {
-      try {
-        return parseTranscriptLine(JSON.parse(line) as unknown)
-      } catch {
-        return []
-      }
-    })
-}
-
-function parseTranscriptLine(value: unknown): TranscriptMessage[] {
-  const record = isRecord(value) ? value : undefined
-  const source = isRecord(record?.message) ? record.message : record
-  const role = asString(source?.role)
-  const content = contentToString(source?.content)
-  if (role === undefined || content === undefined) {
-    return []
-  }
-  return [{ role, content }]
-}
-
-function contentToString(value: unknown): string | undefined {
-  if (typeof value === 'string') {
-    return value
-  }
-  if (!Array.isArray(value)) {
-    return undefined
-  }
-  const parts = value.flatMap((entry) => {
-    if (typeof entry === 'string') {
-      return [entry]
-    }
-    if (isRecord(entry) && typeof entry.text === 'string') {
-      return [entry.text]
-    }
-    return []
-  })
-  return parts.length > 0 ? parts.join('\n') : undefined
 }
 
 function asString(value: unknown): string | undefined {
   return typeof value === 'string' && value.trim() !== '' ? value : undefined
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null
 }
