@@ -1,5 +1,5 @@
 import { createHash, randomUUID } from 'node:crypto'
-import { codexProjectMemoryRoot } from './codex-memory-root.js'
+import { codexProjectMemoryRoot, getReadableCodexProjectMemoryRoot } from './codex-memory-root.js'
 import { identifyCodexProject } from './project-id.js'
 import { assertMemoryProjectionTargetsSafe, renderMemoryProjectionsFromRoot } from '../memory/memory-exporter.js'
 import {
@@ -430,9 +430,11 @@ async function getProjectAndMemoryRoot(cwd: string): Promise<{
   memoryRoot: string
 }> {
   const identity = await identifyCodexProject(cwd)
+  const memoryRoot =
+    (await getReadableCodexProjectMemoryRoot(identity.projectId)) ?? codexProjectMemoryRoot(identity.projectId)
   return {
     project: { projectId: identity.projectId, displayName: identity.displayName },
-    memoryRoot: codexProjectMemoryRoot(identity.projectId)
+    memoryRoot
   }
 }
 

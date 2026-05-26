@@ -1,4 +1,4 @@
-import { mkdir, mkdtemp, readFile, realpath, rm, symlink, writeFile } from 'node:fs/promises'
+import { lstat, mkdir, mkdtemp, readFile, realpath, rm, symlink, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it, vi } from 'vitest'
@@ -59,6 +59,19 @@ describe('Codex memory root', () => {
 
     await expect(readActiveMemoriesFromRoot(join(parent, 'memory'))).rejects.toThrow(/memory symlink/)
     await expect(readFile(join(outside, 'memory', 'index.jsonl'), 'utf8')).rejects.toMatchObject({ code: 'ENOENT' })
+  })
+
+  it('refuses to create Codex memory under a symlinked project root', async () => {
+    const home = await createTempDir('cyrene-codex-home-')
+    process.env.HOME = home
+    const outside = await createTempDir('cyrene-codex-project-outside-')
+    await mkdir(join(home, '.cyrene', 'codex', 'projects'), { recursive: true })
+    await symlink(outside, join(home, '.cyrene', 'codex', 'projects', 'project-1'))
+
+    await expect(ensureCodexProjectMemoryRoot('project-1')).rejects.toThrow(/memory symlink/)
+    await expect(lstat(join(outside, 'memory'))).rejects.toMatchObject({ code: 'ENOENT' })
+    await expect(readFile(join(outside, 'memory', 'index.jsonl'), 'utf8')).rejects.toMatchObject({ code: 'ENOENT' })
+    await expect(readFile(join(outside, 'memory', 'MEMORY.md'), 'utf8')).rejects.toMatchObject({ code: 'ENOENT' })
   })
 })
 
