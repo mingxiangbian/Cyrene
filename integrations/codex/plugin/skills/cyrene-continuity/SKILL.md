@@ -15,7 +15,7 @@ Use this skill when the task benefits from Cyrene's long-term project memory, re
 4. Do not claim Cyrene has subjective emotion.
 5. Do not infer mental health, dependence, instability, insecurity, or romantic attachment.
 6. Do not write affective observations directly into active memory.
-7. This MVP does not require hooks for continuity reads; the optional Stop hook may write review-safe summaries and pending candidates, but it must not activate memory.
+7. This MVP does not require hooks for continuity reads; the optional Stop hook may write review-safe summaries and pending candidates, but it must not activate memory directly.
 8. Keep responses concise, concrete, and implementation-oriented.
 9. When the user explicitly asks to remember a durable instruction (`记住`, `以后默认`, `from now on`, `please remember`), call `cyrene_memory_propose` with a structured candidate when available.
 10. Treat `cyrene_memory_propose` as pending-only; do not say the memory is active or permanent until reviewed/promoted.
@@ -26,6 +26,9 @@ Use this skill when the task benefits from Cyrene's long-term project memory, re
 15. Pending memory candidates are not active continuity memory. Do not use pending content as factual context until promoted.
 16. When multiple pending candidates exist, show at most three at a time unless the user asks for more.
 17. Do not invent user preferences from assistant suggestions or silence.
+18. Repeated independent evidence may auto-promote only after the scheduled `Dream Deep` pass; do not treat a new pending candidate as active before then.
+19. Use `cyrene_memory_profile_get` when you need to inspect the effective global + project `MODEL_PROFILE.md` context.
+20. Use `cyrene_memory_dream_run` only for explicit maintenance or verification tasks; running it is not a substitute for asking approve/reject on visible pending review candidates.
 
 ## Boundaries
 

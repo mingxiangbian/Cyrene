@@ -301,6 +301,56 @@ describe('cyrene codex CLI', () => {
     expect(result.stdout).toContain('advisory: optional Stop hook is not installed')
   })
 
+  it('doctor reports memory profile and dream state without blocking readiness', async () => {
+    const home = await createTempDir('cyrene-codex-cli-memory-doctor-home-')
+    process.env.HOME = home
+    const configPath = join(home, '.codex-config.toml')
+    await writeFile(
+      configPath,
+      [
+        '[mcp_servers.cyrene]',
+        'command = "cyrene"',
+        'args = ["mcp-server", "--stdio"]',
+        'enabled = true',
+        '',
+        '[mcp_servers.agentmemory]',
+        'command = "npx"',
+        'args = ["-y", "@agentmemory/mcp"]',
+        'enabled = false'
+      ].join('\n')
+    )
+    await execFileAsync(
+      process.execPath,
+      ['node_modules/tsx/dist/cli.mjs', 'src/main.ts', 'codex', 'install', '--dev'],
+      { env: cliEnv(home) }
+    )
+    const identity = await identifyCodexProject(process.cwd())
+    const projectMemoryRoot = codexProjectMemoryRoot(identity.projectId)
+    const globalMemoryRoot = codexGlobalMemoryRoot()
+    await mkdir(projectMemoryRoot, { recursive: true })
+    await mkdir(globalMemoryRoot, { recursive: true })
+    await writeFile(join(globalMemoryRoot, 'MODEL_PROFILE.md'), '# Global Profile\n')
+    await writeFile(
+      join(projectMemoryRoot, 'dream-state.json'),
+      JSON.stringify({ dreamDue: true, lastDreamAt: '2026-05-25T00:00:00.000Z' }) + '\n'
+    )
+
+    const result = await execFileAsync(
+      process.execPath,
+      ['node_modules/tsx/dist/cli.mjs', 'src/main.ts', 'codex', 'doctor', '--config', configPath],
+      { env: cliEnv(home) }
+    )
+
+    expect(result.stderr).toBe('')
+    expect(result.stdout).toContain('status: ready')
+    expect(result.stdout).toContain('memory:')
+    expect(result.stdout).toContain('global profile: present')
+    expect(result.stdout).toContain('project profile: missing')
+    expect(result.stdout).toContain('dream due: yes')
+    expect(result.stdout).toContain('last dream: 2026-05-25T00:00:00.000Z')
+    expect(result.stdout).toContain('auto promote: enabled')
+  })
+
   it('runs memory dream from the CLI', async () => {
     const home = await createTempDir('cyrene-codex-cli-dream-home-')
     process.env.HOME = home

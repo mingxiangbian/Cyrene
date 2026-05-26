@@ -1,8 +1,15 @@
 import { access, readFile } from 'node:fs/promises'
 import { homedir } from 'node:os'
 import { join } from 'node:path'
-import { codexGlobalRoot } from './codex-memory-root.js'
+import { createDefaultConfig } from '../config.js'
+import { readModelProfileFromRootIfExists } from '../memory/model-profile.js'
+import {
+  codexGlobalRoot,
+  getReadableCodexGlobalMemoryRoot,
+  getReadableCodexProjectMemoryRoot
+} from './codex-memory-root.js'
 import { isCodexStopHookConfigured } from './codex-hook-install.js'
+import { readCodexMemoryDreamState } from './memory-dream-state.js'
 import { identifyCodexProject } from './project-id.js'
 
 export async function formatCodexDoctor(input: { cwd: string; configPath?: string }): Promise<string> {
@@ -14,6 +21,8 @@ export async function formatCodexDoctor(input: { cwd: string; configPath?: strin
   const skillExists = await pathExists(skillPath)
   const stopHookConfigured = await isCodexStopHookConfigured()
   const identity = await identifyCodexProject(input.cwd)
+  const config = createDefaultConfig(input.cwd)
+  const memoryState = await readDoctorMemoryState(identity.projectId)
   const actions = [
     cyreneConfigured ? undefined : '  action: add [mcp_servers.cyrene] to Codex config',
     agentmemoryEnabled
@@ -44,8 +53,47 @@ export async function formatCodexDoctor(input: { cwd: string; configPath?: strin
     'state:',
     `  codex root: ${codexGlobalRoot()}`,
     `  projectId: ${identity.projectId}`,
-    `  displayName: ${identity.displayName}`
+    `  displayName: ${identity.displayName}`,
+    '',
+    'memory:',
+    `  global profile: ${memoryState.globalProfilePresent ? 'present' : 'missing'}`,
+    `  project profile: ${memoryState.projectProfilePresent ? 'present' : 'missing'}`,
+    `  dream due: ${memoryState.dreamDue ? 'yes' : 'no'}`,
+    `  last dream: ${memoryState.lastDreamAt ?? 'never'}`,
+    `  auto promote: ${config.memoryAutoPromoteEnabled ? 'enabled' : 'disabled'}`
   ].filter((line): line is string => line !== undefined && line !== '').join('\n') + '\n'
+}
+
+interface DoctorMemoryState {
+  globalProfilePresent: boolean
+  projectProfilePresent: boolean
+  dreamDue: boolean
+  lastDreamAt?: string
+}
+
+async function readDoctorMemoryState(projectId: string): Promise<DoctorMemoryState> {
+  const [globalRoot, projectRoot] = await Promise.all([
+    getReadableCodexGlobalMemoryRoot(),
+    getReadableCodexProjectMemoryRoot(projectId)
+  ])
+  const [globalProfilePresent, projectProfilePresent, dreamState] = await Promise.all([
+    profilePresent(globalRoot),
+    profilePresent(projectRoot),
+    projectRoot === null ? Promise.resolve(undefined) : readCodexMemoryDreamState(projectRoot)
+  ])
+  return {
+    globalProfilePresent,
+    projectProfilePresent,
+    dreamDue: dreamState?.dreamDue === true,
+    lastDreamAt: dreamState?.lastDreamAt
+  }
+}
+
+async function profilePresent(memoryRoot: string | null): Promise<boolean> {
+  if (memoryRoot === null) {
+    return false
+  }
+  return (await readModelProfileFromRootIfExists(memoryRoot)) !== undefined
 }
 
 function hasEnabledMcpServer(configText: string, name: string): boolean {

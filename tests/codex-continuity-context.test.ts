@@ -1,5 +1,5 @@
 import { execFile } from 'node:child_process'
-import { mkdir, mkdtemp, rm, symlink, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, readFile, rm, symlink, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { promisify } from 'node:util'
@@ -192,6 +192,45 @@ describe('Codex continuity context', () => {
     })
     expect(context.memory.items).toEqual([])
     expect(context.profile.content).not.toContain(pending.content)
+  })
+
+  it('marks overdue dream state due without running deep promotion', async () => {
+    const home = await createTempDir('cyrene-codex-continuity-dream-home-')
+    process.env.HOME = home
+    const repo = await createTempDir('cyrene-codex-continuity-dream-repo-')
+    const identity = await identifyCodexProject(repo)
+    const memoryRoot = codexProjectMemoryRoot(identity.projectId)
+    const pending = createPendingMemory()
+    await mkdir(memoryRoot, { recursive: true })
+    await writeFile(join(memoryRoot, 'pending.jsonl'), JSON.stringify({
+      ...pending,
+      domain: 'procedural',
+      type: 'procedural_rule',
+      strength: 'hard',
+      content: 'This promotable pending memory must not be activated by continuity get.',
+      normalizedKey: 'continuity-get-does-not-run-deep',
+      source: 'user_explicit',
+      seenCount: 2,
+      evidence: [
+        { runId: 'run-1', evidenceGroupId: 'group-1', summary: 'First.' },
+        { runId: 'run-2', evidenceGroupId: 'group-2', summary: 'Second.' }
+      ]
+    }) + '\n')
+    await writeFile(
+      join(memoryRoot, 'dream-state.json'),
+      JSON.stringify({ dreamDue: false, nextDreamDueAt: '2000-01-01T00:00:00.000Z' }) + '\n'
+    )
+
+    const context = await getCodexContinuityContext({
+      cwd: repo,
+      userMessage: 'Read continuity context only.',
+      task: 'memory'
+    })
+
+    const state = JSON.parse(await readFile(join(memoryRoot, 'dream-state.json'), 'utf8')) as { dreamDue: boolean }
+    expect(state.dreamDue).toBe(true)
+    await expect(readFile(join(memoryRoot, 'index.jsonl'), 'utf8')).rejects.toMatchObject({ code: 'ENOENT' })
+    expect(JSON.stringify(context)).not.toContain('nextDreamDueAt')
   })
 })
 

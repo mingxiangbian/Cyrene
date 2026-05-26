@@ -220,6 +220,31 @@ describe('Codex Stop hook runtime', () => {
     expect(result.action).toBe('pending')
   })
 
+  it('keeps pending proposal fail-open when the dream due marker fails', async () => {
+    const home = await createTempDir('cyrene-codex-stop-home-')
+    vi.stubEnv('HOME', home)
+    const cwd = await createTempDir('cyrene-codex-stop-project-')
+    const identity = await identifyCodexProject(cwd)
+    const memoryRoot = codexProjectMemoryRoot(identity.projectId)
+    await mkdir(join(memoryRoot, 'dream-state.json'), { recursive: true })
+    const transcript = join(cwd, 'transcript.jsonl')
+    await writeFile(transcript, JSON.stringify({ role: 'user', content: '以后默认 spec 和 plan 用中文写。' }) + '\n')
+
+    const result = await handleCodexStopHookPayload(
+      { cwd, transcript_path: transcript, session_id: 's1', turn_id: 't-dream-fail' },
+      {
+        callModel: async () => {
+          throw new Error('model unavailable')
+        }
+      }
+    )
+
+    expect(result.action).toBe('pending')
+    await expect(readFile(join(memoryRoot, 'pending.jsonl'), 'utf8')).resolves.toContain('以后默认 spec 和 plan 用中文写。')
+    await expect(readFile(join(memoryRoot, 'index.jsonl'), 'utf8')).rejects.toMatchObject({ code: 'ENOENT' })
+    expect(JSON.parse(formatCodexStopHookCommandOutput(result))).toEqual({ continue: true, suppressOutput: true })
+  })
+
   it('does not return pending when proposed candidate ids are not confirmed in pending storage', async () => {
     const home = await createTempDir('cyrene-codex-stop-home-')
     vi.stubEnv('HOME', home)

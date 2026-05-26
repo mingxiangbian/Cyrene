@@ -100,7 +100,7 @@ Expected: `61 passed (61)` test files, `462 passed (462)` tests, and `tsc --noEm
 - Modify: `tests/personal-memory-validator.test.ts`
 - Create: `tests/codex-memory-promotion-policy.test.ts`
 
-- [ ] **Step 1: Add schema fields**
+- [x] **Step 1: Add schema fields**
 
 Modify `src/memory/types.ts` with these additions:
 
@@ -127,7 +127,7 @@ Add this field to both `CyreneMemory` and `PendingMemory`:
 profileVisibility?: MemoryProfileVisibility
 ```
 
-- [ ] **Step 2: Preserve profile visibility on activation**
+- [x] **Step 2: Preserve profile visibility on activation**
 
 Modify `activateCandidate` in `src/memory/memory-validator.ts` so promoted memory preserves the candidate field:
 
@@ -141,7 +141,7 @@ Use a conditional spread if TypeScript complains about optional exactness:
 ...(candidate.profileVisibility === undefined ? {} : { profileVisibility: candidate.profileVisibility }),
 ```
 
-- [ ] **Step 3: Add deterministic policy helpers**
+- [x] **Step 3: Add deterministic policy helpers**
 
 In `src/memory/memory-validator.ts`, export:
 
@@ -180,7 +180,7 @@ Behavior:
 
 Update `isPromotablePending` to call `evaluatePendingPromotion(candidate).promotable`. Do not remove existing `validateMemoryCandidate` behavior.
 
-- [ ] **Step 4: Write failing policy tests**
+- [x] **Step 4: Write failing policy tests**
 
 Create `tests/codex-memory-promotion-policy.test.ts` with tests for:
 
@@ -284,7 +284,7 @@ function createPending(overrides: Partial<PendingMemory> = {}): PendingMemory {
 }
 ```
 
-- [ ] **Step 5: Run task tests**
+- [x] **Step 5: Run task tests**
 
 Run:
 
@@ -295,7 +295,7 @@ npm run typecheck
 
 Expected: all selected tests pass and typecheck exits 0.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add src/memory/types.ts src/memory/memory-validator.ts tests/codex-memory-promotion-policy.test.ts tests/personal-memory-validator.test.ts
@@ -312,7 +312,7 @@ git commit -m "feat: add codex memory promotion policy"
 - Modify: `tests/codex-memory-review.test.ts`
 - Modify: `tests/web-server.test.ts`
 
-- [ ] **Step 1: Update renderer target constants**
+- [x] **Step 1: Update renderer target constants**
 
 In `src/memory/memory-exporter.ts`, replace old projection constants with:
 
@@ -328,7 +328,7 @@ const LEGACY_PROJECTION_FILES = [
 ] as const
 ```
 
-- [ ] **Step 2: Keep public API but write only MODEL_PROFILE.md**
+- [x] **Step 2: Keep public API but write only MODEL_PROFILE.md**
 
 Keep these exports:
 
@@ -351,7 +351,7 @@ Implementation requirements:
   - never follow symlinks.
 - If `projections/` becomes empty, remove it. If not empty, leave it.
 
-- [ ] **Step 3: Implement deterministic profile format**
+- [x] **Step 3: Implement deterministic profile format**
 
 `formatMemoryProjection` should produce:
 
@@ -398,7 +398,7 @@ Rules:
 - Default `maxProfileChars` can be a module constant `DEFAULT_MODEL_PROFILE_MAX_CHARS = 6000`.
 - If over budget, keep `Always Apply` first.
 
-- [ ] **Step 4: Update tests**
+- [x] **Step 4: Update tests**
 
 Update assertions that currently read:
 
@@ -423,7 +423,7 @@ Add tests:
 - legacy generated `MEMORY.md` / `projections/*.md` are removed if generated.
 - symlinked `MODEL_PROFILE.md` is rejected before mutation.
 
-- [ ] **Step 5: Run task tests**
+- [x] **Step 5: Run task tests**
 
 Run:
 
@@ -434,7 +434,7 @@ npm run typecheck
 
 Expected: selected tests and typecheck pass.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add src/memory/memory-exporter.ts tests/personal-memory-retriever.test.ts tests/codex-memory-review.test.ts tests/web-server.test.ts
@@ -455,7 +455,7 @@ git commit -m "feat: render model profile projection"
 - Modify: `tests/web-prompt-context.test.ts`
 - Modify: `tests/config.test.ts`
 
-- [ ] **Step 1: Add config fields**
+- [x] **Step 1: Add config fields**
 
 Extend `AppConfig` with:
 
@@ -499,7 +499,7 @@ memoryDreamMaxRuntimeMs: parsePositiveIntEnv(envValue(dotEnv, 'CYRENE_MEMORY_DRE
 memoryDreamModel: optionalEnvValue(dotEnv, 'CYRENE_MEMORY_DREAM_MODEL')
 ```
 
-- [ ] **Step 2: Use shared CJK-aware token estimator**
+- [x] **Step 2: Use shared CJK-aware token estimator**
 
 In `src/memory/memory-retriever.ts`, remove local `estimateTokens` and import:
 
@@ -525,7 +525,7 @@ export function memoryRetrievalBudgetForTask(task: NonNullable<RetrieveMemoriesI
 
 Callers may still override `maxItems` / `maxTokens`; Codex continuity should use the helper.
 
-- [ ] **Step 3: Add effective profile loading**
+- [x] **Step 3: Add effective profile loading**
 
 In `src/codex/continuity-context.ts`, add profile output:
 
@@ -547,7 +547,7 @@ const profileContent = [globalProfile, projectProfile].filter(Boolean).join('\n\
 
 Return `profile.content`, but do not include pending memories.
 
-- [ ] **Step 4: Include profile in local agent runtime**
+- [x] **Step 4: Include profile in local agent runtime**
 
 In `src/web/prompt-context.ts`, load local `<memoryRoot>/MODEL_PROFILE.md` when `memoryProfileAlwaysOnEnabled` is true, and add it before `formatMemoryContext(memories)`:
 
@@ -566,7 +566,7 @@ Use header:
 
 If file is missing, return empty string.
 
-- [ ] **Step 5: Update tests**
+- [x] **Step 5: Update tests**
 
 Add tests:
 
@@ -577,7 +577,7 @@ Add tests:
 - `buildAgentRuntime` includes `MODEL_PROFILE.md` when present.
 - `createDefaultConfig` exposes Phase C-D budget and Dream defaults.
 
-- [ ] **Step 6: Run task tests**
+- [x] **Step 6: Run task tests**
 
 Run:
 
@@ -588,7 +588,7 @@ npm run typecheck
 
 Expected: selected tests and typecheck pass.
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```bash
 git add src/config.ts src/memory/memory-retriever.ts src/codex/continuity-context.ts src/web/prompt-context.ts tests/token-counter.test.ts tests/personal-memory-retriever.test.ts tests/codex-continuity-context.test.ts tests/web-prompt-context.test.ts tests/config.test.ts
@@ -606,7 +606,7 @@ git commit -m "feat: add model profile continuity context"
 - Modify: `tests/codex-memory-review.test.ts`
 - Create: `tests/memory-maintenance.test.ts`
 
-- [ ] **Step 1: Add root snapshot API**
+- [x] **Step 1: Add root snapshot API**
 
 In `src/memory/memory-snapshot.ts`, add:
 
@@ -616,7 +616,7 @@ export async function createMemorySnapshotFromRoot(memoryRoot: string, reason: s
 
 It should mirror `createMemorySnapshot(cwd, reason)` but read active/pending/tombstones from root-level store functions and write under `<memoryRoot>/snapshots`.
 
-- [ ] **Step 2: Add maintenance runtime**
+- [x] **Step 2: Add maintenance runtime**
 
 Create `src/memory/memory-maintenance.ts`:
 
@@ -662,13 +662,13 @@ Behavior:
 - If still over `activeMaxItems` or `activeContentMaxChars`, archive lowest usefulness/evidence/safety memories first, never archive hard global/procedural memory unless no other option.
 - Write active, tombstones, events, then render `MODEL_PROFILE.md`.
 
-- [ ] **Step 3: Run maintenance after manual promote**
+- [x] **Step 3: Run maintenance after manual promote**
 
 In `src/codex/memory-review.ts`, after writing active/pending/event in `promoteCodexPendingMemory`, call `runMemoryMaintenanceFromRoot` using default budget from `createDefaultConfig(input.cwd)`.
 
 Do not run maintenance before hash check or validator check.
 
-- [ ] **Step 4: Write tests**
+- [x] **Step 4: Write tests**
 
 Create `tests/memory-maintenance.test.ts` with tests:
 
@@ -685,7 +685,7 @@ Update `tests/codex-memory-review.test.ts`:
 - manual promote now writes `MODEL_PROFILE.md`.
 - maintenance snapshot exists after promote.
 
-- [ ] **Step 5: Run task tests**
+- [x] **Step 5: Run task tests**
 
 Run:
 
@@ -696,7 +696,7 @@ npm run typecheck
 
 Expected: selected tests and typecheck pass.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add src/memory/memory-snapshot.ts src/memory/memory-maintenance.ts src/codex/memory-review.ts tests/memory-maintenance.test.ts tests/codex-memory-review.test.ts
@@ -720,7 +720,7 @@ git commit -m "feat: add bounded memory maintenance"
 - Modify: `tests/mcp-server.test.ts`
 - Modify: `tests/codex-cli.test.ts`
 
-- [ ] **Step 1: Implement dream state**
+- [x] **Step 1: Implement dream state**
 
 Create `src/codex/memory-dream-state.ts`:
 
@@ -741,7 +741,7 @@ export function nextDreamDueAt(now: string, intervalHours: number): string
 
 State file path: `<memoryRoot>/dream-state.json`. Use atomic write. Missing file returns `{ dreamDue: false }`.
 
-- [ ] **Step 2: Implement Dream runtime**
+- [x] **Step 2: Implement Dream runtime**
 
 Create `src/codex/memory-dream.ts`:
 
@@ -794,11 +794,11 @@ Behavior:
   - release lock.
 - All root writes use atomic store helpers. Deep errors update dream state as failed and rethrow for manual command; hook paths will catch.
 
-- [ ] **Step 3: Mark due after proposing pending**
+- [x] **Step 3: Mark due after proposing pending**
 
 In `src/codex/memory-propose.ts`, after successful pending upsert, call `markCodexMemoryDreamDue(memoryRoot, now)`. Catch errors and continue; propose must remain pending-only and fail-open for due marker.
 
-- [ ] **Step 4: Add evidence grouping to review-summary candidates**
+- [x] **Step 4: Add evidence grouping to review-summary candidates**
 
 In `src/codex/review-summary-runtime.ts`, update generated candidate evidence so every evidence item has:
 
@@ -823,7 +823,7 @@ evidenceGroupId: stableEvidenceGroupId(...)
 
 In `src/codex/memory-review.ts`, include `evidenceGroupId`, `sessionId`, `taskHash`, `quoteHash`, and `sourceKind` in `reviewHashForPendingMemory`. This intentionally makes evidence provenance review-significant. Existing pending candidates without those fields still hash normally because missing fields serialize as `null`.
 
-- [ ] **Step 5: Add CLI and MCP tools**
+- [x] **Step 5: Add CLI and MCP tools**
 
 In `src/codex/codex-cli.ts`, support:
 
@@ -845,7 +845,7 @@ cyrene_memory_profile_get: { cwd?: string }
 
 Register both in `src/mcp/mcp-server.ts`.
 
-- [ ] **Step 6: Write tests**
+- [x] **Step 6: Write tests**
 
 Create `tests/codex-memory-dream.test.ts`:
 
@@ -869,7 +869,7 @@ Update existing tests:
 - `tests/mcp-server.test.ts`: tools are registered and return JSON text.
 - `tests/codex-cli.test.ts`: CLI accepts `codex memory dream --stage deep` and `codex memory profile`.
 
-- [ ] **Step 7: Run task tests**
+- [x] **Step 7: Run task tests**
 
 Run:
 
@@ -880,7 +880,7 @@ npm run typecheck
 
 Expected: selected tests and typecheck pass.
 
-- [ ] **Step 8: Commit**
+- [x] **Step 8: Commit**
 
 ```bash
 git add src/codex/memory-dream-state.ts src/codex/memory-dream.ts src/codex/memory-propose.ts src/codex/review-summary-runtime.ts src/codex/codex-hook-stop.ts src/codex/memory-review.ts src/codex/codex-cli.ts src/mcp/mcp-server.ts src/mcp/tools/memory-dream.ts tests/codex-memory-dream.test.ts tests/codex-memory-propose.test.ts tests/codex-review-summary-runtime.test.ts tests/codex-hook-stop.test.ts tests/codex-memory-review.test.ts tests/mcp-server.test.ts tests/codex-cli.test.ts
@@ -899,7 +899,7 @@ git commit -m "feat: add codex memory dream pass"
 - Modify: tests impacted by `rg`.
 - Modify: `docs/superpowers/plans/2026-05-26-phase-c-d-auto-promotion.md`
 
-- [ ] **Step 1: Hook fail-open due marker**
+- [x] **Step 1: Hook fail-open due marker**
 
 In `src/codex/codex-hook-stop.ts`, ensure all due-marker or Dream-state failures are caught. `handleCodexStopHookCommand` must still output exactly:
 
@@ -913,7 +913,7 @@ Add tests:
 - due marker failure still returns valid hook JSON.
 - Stop hook does not create `index.jsonl` directly.
 
-- [ ] **Step 2: Doctor reports Phase C-D state**
+- [x] **Step 2: Doctor reports Phase C-D state**
 
 In `src/codex/codex-doctor.ts`, add:
 
@@ -928,13 +928,13 @@ memory:
 
 Do not make missing profile a readiness blocker.
 
-- [ ] **Step 3: Continuity overdue check**
+- [x] **Step 3: Continuity overdue check**
 
 In `src/codex/continuity-context.ts`, if `memoryDreamCatchUpEnabled` is true and Dream state is overdue, mark `dreamDue: true` for the current project root. Do not run Deep in continuity get.
 
 Add debug-safe output only if already present in profile/pending notice; default continuity output should not expose raw dream state details except profile and memory items.
 
-- [ ] **Step 4: Skill doc update**
+- [x] **Step 4: Skill doc update**
 
 Update `integrations/codex/plugin/skills/cyrene-continuity/SKILL.md`:
 
@@ -943,7 +943,7 @@ Update `integrations/codex/plugin/skills/cyrene-continuity/SKILL.md`:
 - Explain `cyrene_memory_profile_get` and `cyrene_memory_dream_run`.
 - Keep approve/reject rules unchanged for pending candidates shown in chat.
 
-- [ ] **Step 5: Remove old projection assumptions**
+- [x] **Step 5: Remove old projection assumptions**
 
 Run:
 
@@ -953,7 +953,7 @@ rg -n "MEMORY\\.md|projections/PROJECT|projections/PERSONAL|projections/AFFECT|p
 
 Expected: only historical docs, migration comments, or explicit legacy cleanup tests remain. Runtime code should prefer `MODEL_PROFILE.md`.
 
-- [ ] **Step 6: Full verification**
+- [x] **Step 6: Full verification**
 
 Run:
 
@@ -969,7 +969,7 @@ Expected:
 - `tsc --noEmit` exits 0.
 - `git diff --check` exits 0.
 
-- [ ] **Step 7: Manual smoke**
+- [x] **Step 7: Manual smoke**
 
 Use a temporary HOME and project:
 
@@ -993,7 +993,7 @@ Expected:
 - `MODEL_PROFILE.md` exists.
 - old generated projections are not created.
 
-- [ ] **Step 8: Commit final cleanup**
+- [x] **Step 8: Commit final cleanup**
 
 ```bash
 git add src tests integrations docs/superpowers/plans/2026-05-26-phase-c-d-auto-promotion.md
@@ -1002,16 +1002,16 @@ git commit -m "test: verify phase c-d memory workflow"
 
 ## Final Review Checklist
 
-- [ ] `index.jsonl` remains source of truth.
-- [ ] Stop hook never writes active memory.
-- [ ] One weak candidate does not auto-promote.
-- [ ] Same-run duplicate evidence does not auto-promote.
-- [ ] Repeated independent evidence can promote through Dream Deep.
-- [ ] Unsafe/diagnostic content does not promote.
-- [ ] Manual approve/reject still works.
-- [ ] Global memory root still works across projects.
-- [ ] `MODEL_PROFILE.md` generated for global/project roots.
-- [ ] `cyrene_continuity_get` returns profile + task retrieval.
-- [ ] Old generated projections are no longer generated.
-- [ ] Store maintenance creates snapshot before mutation.
-- [ ] Full `npm test`, `npm run typecheck`, and `git diff --check` pass.
+- [x] `index.jsonl` remains source of truth.
+- [x] Stop hook never writes active memory.
+- [x] One weak candidate does not auto-promote.
+- [x] Same-run duplicate evidence does not auto-promote.
+- [x] Repeated independent evidence can promote through Dream Deep.
+- [x] Unsafe/diagnostic content does not promote.
+- [x] Manual approve/reject still works.
+- [x] Global memory root still works across projects.
+- [x] `MODEL_PROFILE.md` generated for global/project roots.
+- [x] `cyrene_continuity_get` returns profile + task retrieval.
+- [x] Old generated projections are no longer generated.
+- [x] Store maintenance creates snapshot before mutation.
+- [x] Full `npm test`, `npm run typecheck`, and `git diff --check` pass.
