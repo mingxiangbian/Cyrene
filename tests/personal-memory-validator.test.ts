@@ -221,13 +221,20 @@ describe('personal memory validator and lifecycle', () => {
 
   it('promotes repeated pending candidates when policy becomes eligible', async () => {
     const cwd = await createTempDir()
-    await upsertPendingMemory(cwd, createCandidate({
-      id: 'pending-existing',
-      domain: 'personal',
-      type: 'interaction_style',
-      strength: 'soft',
-      normalizedKey: 'user-prefers-direct-plans'
-    }))
+    await upsertPendingMemory(cwd, {
+      ...createCandidate({
+        id: 'pending-existing',
+        domain: 'personal',
+        type: 'interaction_style',
+        strength: 'soft',
+        normalizedKey: 'user-prefers-direct-plans'
+      }),
+      seenCount: 2,
+      evidence: [
+        { runId: 'run-1', summary: 'First signal.' },
+        { runId: 'run-2', summary: 'Second signal.' }
+      ]
+    })
 
     const result = await processMemoryCandidate({
       cwd,
@@ -237,7 +244,7 @@ describe('personal memory validator and lifecycle', () => {
         type: 'interaction_style',
         strength: 'soft',
         normalizedKey: 'user-prefers-direct-plans',
-        evidenceSummary: 'Second signal.'
+        evidenceSummary: 'Third signal.'
       }),
       now: '2026-05-23T00:01:00.000Z'
     })

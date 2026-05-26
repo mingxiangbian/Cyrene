@@ -37,6 +37,8 @@ export type MemorySource =
   | 'file'
   | 'legacy_markdown'
 
+export type MemoryProfileVisibility = 'always' | 'safe_summary' | 'retrieval_only' | 'never'
+
 export interface MemoryScores {
   evidenceStrength: number
   stability: number
@@ -51,6 +53,11 @@ export interface MemoryEvidence {
   traceRefs?: string[]
   quote?: string
   summary?: string
+  evidenceGroupId?: string
+  sessionId?: string
+  taskHash?: string
+  quoteHash?: string
+  sourceKind?: MemorySource
 }
 
 export interface CyreneMemory {
@@ -74,6 +81,7 @@ export interface CyreneMemory {
     halfLifeDays?: number
   }
   userConfirmed?: boolean
+  profileVisibility?: MemoryProfileVisibility
   tags: string[]
   supersedes?: string[]
 }
@@ -96,6 +104,7 @@ export interface PendingMemory {
   promoteAfter?: string
   expiresAt: string
   userConfirmed?: boolean
+  profileVisibility?: MemoryProfileVisibility
   tags: string[]
   conflictsWith?: string[]
 }

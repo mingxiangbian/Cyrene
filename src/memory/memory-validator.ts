@@ -1,10 +1,23 @@
-import type { CyreneMemory, MemoryDecision, MemoryTombstone, PendingMemory } from './types.js'
+import { createHash } from 'node:crypto'
+import type {
+  CyreneMemory,
+  MemoryDecision,
+  MemoryProfileVisibility,
+  MemoryTombstone,
+  PendingMemory
+} from './types.js'
 
 export interface ValidateMemoryCandidateInput {
   candidate: PendingMemory
   existingMemories: CyreneMemory[]
   tombstones: MemoryTombstone[]
   now?: string
+}
+
+export interface PendingPromotionPolicyResult {
+  promotable: boolean
+  reason: string
+  distinctEvidenceCount: number
 }
 
 export function validateMemoryCandidate(input: ValidateMemoryCandidateInput): MemoryDecision {
@@ -94,22 +107,95 @@ export function activateCandidate(candidate: PendingMemory, now: string): Cyrene
     expiresAt: candidate.expiresAt,
     userConfirmed: candidate.userConfirmed,
     tags: candidate.tags,
+    ...(candidate.profileVisibility === undefined ? {} : { profileVisibility: candidate.profileVisibility }),
     ...(candidate.conflictsWith === undefined ? {} : { supersedes: candidate.conflictsWith })
   }
 }
 
 export function isPromotablePending(candidate: PendingMemory): boolean {
-  return (
-    candidate.seenCount >= 2 &&
-    hasValidEvidence(candidate) &&
-    !isDiagnosticAffectiveClaim(candidate.content) &&
-    candidate.scores.evidenceStrength >= 0.75 &&
-    candidate.scores.stability >= 0.7 &&
-    candidate.scores.usefulness >= 0.6 &&
-    candidate.scores.safety >= 0.8 &&
-    candidate.scores.sensitivity <= 0.6 &&
-    candidate.domain !== 'affective'
-  )
+  return evaluatePendingPromotion(candidate).promotable
+}
+
+export function distinctEvidenceCount(candidate: PendingMemory): number {
+  const keys = new Set<string>()
+  for (const entry of candidate.evidence) {
+    const summaryQuote = `${entry.summary ?? ''}|${entry.quote ?? ''}`
+    const hash = createHash('sha256').update(summaryQuote).digest('hex')
+    const key = entry.evidenceGroupId ?? entry.sessionId ?? entry.runId ?? hash
+    if (key.trim() !== '') {
+      keys.add(key)
+    }
+  }
+  return keys.size
+}
+
+export function deriveProfileVisibility(
+  memory: Pick<
+    PendingMemory,
+    'domain' | 'type' | 'strength' | 'source' | 'scores' | 'content' | 'userConfirmed' | 'profileVisibility'
+  >
+): MemoryProfileVisibility {
+  if (memory.profileVisibility !== undefined) {
+    return memory.profileVisibility
+  }
+  if (containsRestrictedProfileDetail(memory.content)) {
+    return 'never'
+  }
+  if (
+    (memory.domain === 'procedural' || memory.domain === 'project' || memory.domain === 'system') &&
+    memory.strength === 'hard' &&
+    memory.scores.safety >= 0.8
+  ) {
+    return 'always'
+  }
+  if (
+    (memory.domain === 'personal' || memory.domain === 'relationship' || memory.domain === 'affective') &&
+    memory.scores.safety >= 0.85 &&
+    memory.scores.sensitivity <= 0.45
+  ) {
+    return 'safe_summary'
+  }
+  return 'retrieval_only'
+}
+
+export function evaluatePendingPromotion(candidate: PendingMemory, now?: string): PendingPromotionPolicyResult {
+  const count = distinctEvidenceCount(candidate)
+  const threshold = promotionThreshold(candidate)
+  if (!hasValidEvidence(candidate)) {
+    return pendingResult('Memory candidate is missing auditable evidence', count)
+  }
+  if (candidate.promoteAfter !== undefined && now !== undefined && candidate.promoteAfter > now) {
+    return pendingResult('Memory candidate promoteAfter has not elapsed', count)
+  }
+  if (hasAssistantDerivedEvidence(candidate)) {
+    return pendingResult('Memory candidate is based on assistant output and requires user confirmation', count)
+  }
+  if (isLowValuePromotionNoise(candidate)) {
+    return pendingResult('Memory candidate is low-value confirmation or transient status noise', count)
+  }
+  if (isDiagnosticAffectiveClaim(candidate.content)) {
+    return pendingResult('Memory candidate contains a diagnostic affective claim', count)
+  }
+  if (candidate.seenCount < threshold.seenCount && candidate.userConfirmed !== true) {
+    return pendingResult(`Memory candidate seenCount is below ${threshold.seenCount}`, count)
+  }
+  if (count < threshold.distinctEvidenceCount && candidate.userConfirmed !== true) {
+    return pendingResult(`Memory candidate needs ${threshold.distinctEvidenceCount} distinct evidence groups`, count)
+  }
+  if (
+    candidate.scores.evidenceStrength < threshold.evidenceStrength ||
+    candidate.scores.stability < threshold.stability ||
+    candidate.scores.usefulness < threshold.usefulness ||
+    candidate.scores.safety < threshold.safety ||
+    candidate.scores.sensitivity > threshold.sensitivity
+  ) {
+    return pendingResult('Memory candidate is below promotion score thresholds', count)
+  }
+  return {
+    promotable: true,
+    reason: 'Memory candidate passed pending promotion policy',
+    distinctEvidenceCount: count
+  }
 }
 
 function normalizeCandidate(candidate: PendingMemory): PendingMemory {
@@ -224,6 +310,78 @@ function hasDirectMemoryInstruction(candidate: PendingMemory): boolean {
 
 function evidenceText(candidate: PendingMemory): string {
   return candidate.evidence.map((entry) => `${entry.summary ?? ''} ${entry.quote ?? ''}`).join(' ')
+}
+
+function pendingResult(reason: string, distinctEvidenceCount: number): PendingPromotionPolicyResult {
+  return { promotable: false, reason, distinctEvidenceCount }
+}
+
+function promotionThreshold(candidate: PendingMemory): {
+  seenCount: number
+  distinctEvidenceCount: number
+  evidenceStrength: number
+  stability: number
+  usefulness: number
+  safety: number
+  sensitivity: number
+} {
+  if (candidate.domain === 'personal' || candidate.domain === 'relationship') {
+    return {
+      seenCount: 3,
+      distinctEvidenceCount: 3,
+      evidenceStrength: 0.8,
+      stability: 0.75,
+      usefulness: 0.65,
+      safety: 0.85,
+      sensitivity: 0.45
+    }
+  }
+  if (candidate.domain === 'affective') {
+    return {
+      seenCount: 3,
+      distinctEvidenceCount: 3,
+      evidenceStrength: 0.85,
+      stability: 0.8,
+      usefulness: 0.65,
+      safety: 0.9,
+      sensitivity: 0.3
+    }
+  }
+  return {
+    seenCount: 2,
+    distinctEvidenceCount: 2,
+    evidenceStrength: 0.75,
+    stability: 0.7,
+    usefulness: 0.6,
+    safety: 0.8,
+    sensitivity: 0.6
+  }
+}
+
+function isLowValuePromotionNoise(candidate: PendingMemory): boolean {
+  const content = candidate.content.trim()
+  if (/^(ok|okay|确认|可以|继续)$/i.test(content)) {
+    return true
+  }
+
+  const text = `${content} ${evidenceText(candidate)}`.toLowerCase()
+  return (
+    /\bran\s+npm\s+(test|run|install|ci)\b/.test(text) ||
+    /\bread\s+(the\s+)?file\b/.test(text) ||
+    /\bhook\s+returned\b/.test(text) ||
+    /\bmerged\s+and\s+pushed\b/.test(text) ||
+    /\bcurrent\s+branch\b/.test(text) ||
+    /\bone[- ]time\s+(ci|test)\s+result\b/.test(text) ||
+    /\b(ci|test)\s+(passed|failed)\b/.test(text)
+  )
+}
+
+function containsRestrictedProfileDetail(content: string): boolean {
+  return (
+    isDiagnosticAffectiveClaim(content) ||
+    /\b(secret|credential|password|passwd|api[_ -]?key|token|private key|ssh key|private raw detail)\b/i.test(content) ||
+    /私密原文|原始私密|隐私原文|诊断/.test(content)
+  )
 }
 
 function reject(candidate: PendingMemory, now: string, reason: string): MemoryDecision {
