@@ -2,7 +2,8 @@ import { describe, expect, it } from 'vitest'
 import {
   deriveProfileVisibility,
   distinctEvidenceCount,
-  evaluatePendingPromotion
+  evaluatePendingPromotion,
+  isPromotablePending
 } from '../src/memory/memory-validator.js'
 import type { PendingMemory } from '../src/memory/types.js'
 
@@ -66,6 +67,40 @@ describe('Codex repeated evidence promotion policy', () => {
       ]
     })
 
+    expect(evaluatePendingPromotion(candidate).promotable).toBe(false)
+  })
+
+  it('does not let user confirmation bypass evidence counts without a durable instruction', () => {
+    const candidate = createPending({
+      userConfirmed: true,
+      seenCount: 1,
+      content: 'Specs and plans are written in Chinese.',
+      evidence: [{ runId: 'run-1', summary: 'User confirmed this preference.' }]
+    })
+
+    expect(evaluatePendingPromotion(candidate).promotable).toBe(false)
+  })
+
+  it('does not promote before promoteAfter', () => {
+    const candidate = createPending({
+      seenCount: 2,
+      promoteAfter: '9999-01-01T00:00:00.000Z',
+      evidence: [
+        { runId: 'run-1', summary: 'First observation.' },
+        { runId: 'run-2', summary: 'Second observation.' }
+      ]
+    })
+
+    expect(isPromotablePending(candidate)).toBe(false)
+  })
+
+  it('does not count structurally empty evidence as distinct evidence', () => {
+    const candidate = createPending({
+      seenCount: 2,
+      evidence: [{ runId: 'run-1', summary: 'First observation.' }, {}]
+    })
+
+    expect(distinctEvidenceCount(candidate)).toBe(1)
     expect(evaluatePendingPromotion(candidate).promotable).toBe(false)
   })
 

@@ -113,18 +113,23 @@ export function activateCandidate(candidate: PendingMemory, now: string): Cyrene
 }
 
 export function isPromotablePending(candidate: PendingMemory): boolean {
-  return evaluatePendingPromotion(candidate).promotable
+  return evaluatePendingPromotion(candidate, new Date().toISOString()).promotable
 }
 
 export function distinctEvidenceCount(candidate: PendingMemory): number {
   const keys = new Set<string>()
   for (const entry of candidate.evidence) {
+    const evidenceGroupId = cleanEvidencePart(entry.evidenceGroupId)
+    const sessionId = cleanEvidencePart(entry.sessionId)
+    const runId = cleanEvidencePart(entry.runId)
+    const summary = cleanEvidencePart(entry.summary)
+    const quote = cleanEvidencePart(entry.quote)
+    if (evidenceGroupId === undefined && sessionId === undefined && runId === undefined && summary === undefined && quote === undefined) {
+      continue
+    }
     const summaryQuote = `${entry.summary ?? ''}|${entry.quote ?? ''}`
     const hash = createHash('sha256').update(summaryQuote).digest('hex')
-    const key = entry.evidenceGroupId ?? entry.sessionId ?? entry.runId ?? hash
-    if (key.trim() !== '') {
-      keys.add(key)
-    }
+    keys.add(evidenceGroupId ?? sessionId ?? runId ?? hash)
   }
   return keys.size
 }
@@ -161,6 +166,8 @@ export function deriveProfileVisibility(
 export function evaluatePendingPromotion(candidate: PendingMemory, now?: string): PendingPromotionPolicyResult {
   const count = distinctEvidenceCount(candidate)
   const threshold = promotionThreshold(candidate)
+  const hasDurableInstruction = hasDirectMemoryInstruction(candidate)
+  const canBypassEvidenceCount = candidate.userConfirmed === true && hasDurableInstruction
   if (!hasValidEvidence(candidate)) {
     return pendingResult('Memory candidate is missing auditable evidence', count)
   }
@@ -176,10 +183,10 @@ export function evaluatePendingPromotion(candidate: PendingMemory, now?: string)
   if (isDiagnosticAffectiveClaim(candidate.content)) {
     return pendingResult('Memory candidate contains a diagnostic affective claim', count)
   }
-  if (candidate.seenCount < threshold.seenCount && candidate.userConfirmed !== true) {
+  if (candidate.seenCount < threshold.seenCount && !canBypassEvidenceCount) {
     return pendingResult(`Memory candidate seenCount is below ${threshold.seenCount}`, count)
   }
-  if (count < threshold.distinctEvidenceCount && candidate.userConfirmed !== true) {
+  if (count < threshold.distinctEvidenceCount && !canBypassEvidenceCount) {
     return pendingResult(`Memory candidate needs ${threshold.distinctEvidenceCount} distinct evidence groups`, count)
   }
   if (
@@ -308,12 +315,17 @@ function isMemoryRecallQuestion(candidate: PendingMemory): boolean {
 
 function hasDirectMemoryInstruction(candidate: PendingMemory): boolean {
   return /记住|请记住|以后默认|之后默认|以后你要|以后请|remember that|please remember|from now on|default to/i.test(
-    evidenceText(candidate)
+    `${candidate.content} ${evidenceText(candidate)}`
   )
 }
 
 function evidenceText(candidate: PendingMemory): string {
   return candidate.evidence.map((entry) => `${entry.summary ?? ''} ${entry.quote ?? ''}`).join(' ')
+}
+
+function cleanEvidencePart(value: string | undefined): string | undefined {
+  const trimmed = value?.trim()
+  return trimmed === undefined || trimmed === '' ? undefined : trimmed
 }
 
 function pendingResult(reason: string, distinctEvidenceCount: number): PendingPromotionPolicyResult {
