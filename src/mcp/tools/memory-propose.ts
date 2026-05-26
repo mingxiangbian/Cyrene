@@ -24,7 +24,12 @@ const memoryCandidateSchema = z.object({
     z.object({
       runId: z.string().optional(),
       quote: z.string().optional(),
-      summary: z.string().optional()
+      summary: z.string().optional(),
+      evidenceGroupId: z.string().optional(),
+      sessionId: z.string().optional(),
+      taskHash: z.string().optional(),
+      quoteHash: z.string().optional(),
+      sourceKind: z.enum(['user_explicit', 'user_implicit', 'assistant_observed', 'tool_trace', 'file', 'legacy_markdown']).optional()
     })
   ),
   scores: z

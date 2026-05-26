@@ -2,6 +2,7 @@ import { formatCodexDoctor } from './codex-doctor.js'
 import { formatCodexStopHookInstall, installCodexStopHook } from './codex-hook-install.js'
 import { handleCodexStopHookCommand } from './codex-hook-stop.js'
 import { installCodexDevBridge } from './codex-install.js'
+import { getCodexMemoryProfile, runCodexMemoryDream, type CodexMemoryDreamStage } from './memory-dream.js'
 
 export async function handleCodexCommand(input: { cwd: string; args: string[] }): Promise<void> {
   const command = input.args[0]
@@ -26,7 +27,21 @@ export async function handleCodexCommand(input: { cwd: string; args: string[] })
     return
   }
 
-  console.error('Usage: cyrene codex <doctor [--config <path>]|install --dev|install-hook --stop [--dry-run]|hook stop>')
+  if (command === 'memory' && input.args[1] === 'dream') {
+    process.stdout.write(`${JSON.stringify(await runCodexMemoryDream({
+      cwd: input.cwd,
+      stage: parseDreamStage(input.args)
+    }), null, 2)}\n`)
+    return
+  }
+
+  if (command === 'memory' && input.args[1] === 'profile') {
+    const profile = await getCodexMemoryProfile({ cwd: input.cwd })
+    process.stdout.write(profile.content === '' ? '' : `${profile.content}\n`)
+    return
+  }
+
+  console.error('Usage: cyrene codex <doctor [--config <path>]|install --dev|install-hook --stop [--dry-run]|hook stop|memory dream [--stage light|rem|deep]|memory profile>')
   process.exit(1)
 }
 
@@ -37,4 +52,16 @@ function parseConfigPath(args: string[]): string | undefined {
   }
   const inline = args.find((arg) => arg.startsWith('--config='))
   return inline?.slice('--config='.length)
+}
+
+function parseDreamStage(args: string[]): CodexMemoryDreamStage | undefined {
+  const index = args.indexOf('--stage')
+  const value = index >= 0 ? args[index + 1] : args.find((arg) => arg.startsWith('--stage='))?.slice('--stage='.length)
+  if (value === undefined) {
+    return undefined
+  }
+  if (value === 'light' || value === 'rem' || value === 'deep') {
+    return value
+  }
+  throw new Error(`Invalid memory dream stage: ${value}`)
 }

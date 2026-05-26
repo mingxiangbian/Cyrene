@@ -135,6 +135,49 @@ describe('Codex review summary runtime', () => {
     expect(summaries).toContain(result.candidateIds[0])
   })
 
+  it('adds stable evidence grouping metadata to generated candidates', async () => {
+    const home = await createTempDir('cyrene-review-runtime-home-')
+    vi.stubEnv('HOME', home)
+    const cwd = await createTempDir('cyrene-review-runtime-project-')
+
+    const result = await runCodexReviewSummary({
+      cwd,
+      sessionId: 's-evidence',
+      turnId: 't-evidence',
+      messages: [{ role: 'user', content: '请记住我偏好中文计划。' }],
+      config: createConfig(cwd),
+      callModel: async () =>
+        modelResponse(JSON.stringify({
+          summary: '用户偏好中文计划。',
+          candidates: [
+            {
+              domain: 'procedural',
+              type: 'procedural_rule',
+              content: '用户偏好中文计划。',
+              source: 'user_explicit',
+              evidence: [{ summary: '用户说偏好中文计划。' }]
+            }
+          ]
+        })),
+      now: '2026-05-26T00:00:00.000Z'
+    })
+
+    expect(result.action).toBe('pending')
+    if (result.action !== 'pending') throw new Error(`Expected pending, got ${result.action}`)
+    const [pendingRecord] = (await readFile(join(result.memoryRoot, 'pending.jsonl'), 'utf8'))
+      .trim()
+      .split('\n')
+      .map((line) => JSON.parse(line) as {
+        evidence: Array<{ runId?: string; sessionId?: string; evidenceGroupId?: string; sourceKind?: string }>
+      })
+    expect(pendingRecord.evidence[0]).toMatchObject({
+      runId: 's-evidence:t-evidence',
+      sessionId: 's-evidence',
+      sourceKind: 'user_explicit'
+    })
+    expect(pendingRecord.evidence[0]?.evidenceGroupId).toMatch(/^[a-f0-9]{64}$/)
+  })
+
   it('skips candidates with invalid memory schema enum values', async () => {
     const home = await createTempDir('cyrene-review-runtime-home-')
     vi.stubEnv('HOME', home)

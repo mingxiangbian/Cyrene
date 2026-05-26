@@ -1,5 +1,6 @@
 import { createHash, randomUUID } from 'node:crypto'
 import { ensureCodexGlobalMemoryRoot, ensureCodexProjectMemoryRoot } from './codex-memory-root.js'
+import { markCodexMemoryDreamDue } from './memory-dream-state.js'
 import { summarizePendingMemory } from './memory-review.js'
 import { identifyCodexProject } from './project-id.js'
 import {
@@ -103,6 +104,7 @@ export async function proposeCodexMemoryCandidate(input: {
 
   const pendingCandidate = decision.action === 'pending' ? decision.candidate : candidate
   const merged = await upsertPendingMemoryFromRoot(memoryRoot, pendingCandidate)
+  await markDreamDueFailOpen(memoryRoot, now)
   const reason =
     decision.action === 'auto_write' ? `Pending-only Codex bridge downgraded auto-write: ${decision.reason}` : decision.reason
 
@@ -118,6 +120,14 @@ export async function proposeCodexMemoryCandidate(input: {
     project: { projectId: project.projectId, displayName: project.displayName },
     result: { action: 'pending', candidateId: merged.id, reason, review: summarizePendingMemory(merged) },
     memoryRoot
+  }
+}
+
+async function markDreamDueFailOpen(memoryRoot: string, now: string): Promise<void> {
+  try {
+    await markCodexMemoryDreamDue(memoryRoot, now)
+  } catch {
+    // Dream scheduling must never make pending-only memory proposal fail.
   }
 }
 

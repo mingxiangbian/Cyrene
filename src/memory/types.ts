@@ -137,6 +137,7 @@ export interface MemoryEvent {
     | 'supersede'
     | 'snapshot'
     | 'restore'
+    | 'audit'
   at: string
   reason: string
   memoryId?: string

@@ -46,6 +46,33 @@ describe('Codex memory propose', () => {
     await expect(readFile(join(result.memoryRoot, 'index.jsonl'), 'utf8')).rejects.toMatchObject({ code: 'ENOENT' })
   })
 
+  it('marks the memory dream pass due after writing pending memory', async () => {
+    const home = await createTempDir('cyrene-codex-propose-home-')
+    vi.stubEnv('HOME', home)
+    const cwd = await createTempDir('cyrene-codex-propose-project-')
+
+    const result = await proposeCodexMemoryCandidate({
+      cwd,
+      now: '2026-05-26T00:00:00.000Z',
+      candidate: {
+        domain: 'procedural',
+        type: 'procedural_rule',
+        content: 'Dream pass should run after pending memory is proposed.',
+        source: 'user_explicit',
+        evidence: [{ runId: 'run-dream', quote: '记住：pending 后需要 dream pass。' }]
+      }
+    })
+
+    const state = JSON.parse(await readFile(join(result.memoryRoot, 'dream-state.json'), 'utf8')) as {
+      dreamDue: boolean
+      nextDreamDueAt?: string
+    }
+    expect(state).toMatchObject({
+      dreamDue: true,
+      nextDreamDueAt: '2026-05-26T00:00:00.000Z'
+    })
+  })
+
   it('writes global-scope candidates to the Codex global pending memory root', async () => {
     const home = await createTempDir('cyrene-codex-propose-home-')
     vi.stubEnv('HOME', home)

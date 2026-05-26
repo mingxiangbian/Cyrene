@@ -144,7 +144,12 @@ export function reviewHashForPendingMemory(candidate: PendingMemory): string {
       messageIds: entry.messageIds ?? null,
       traceRefs: entry.traceRefs ?? null,
       quote: entry.quote ?? null,
-      summary: entry.summary ?? null
+      summary: entry.summary ?? null,
+      evidenceGroupId: entry.evidenceGroupId ?? null,
+      sessionId: entry.sessionId ?? null,
+      taskHash: entry.taskHash ?? null,
+      quoteHash: entry.quoteHash ?? null,
+      sourceKind: entry.sourceKind ?? null
     })),
     source: candidate.source,
     scores: {

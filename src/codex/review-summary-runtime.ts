@@ -1,4 +1,4 @@
-import { randomUUID } from 'node:crypto'
+import { createHash, randomUUID } from 'node:crypto'
 import { ensureCodexProjectMemoryRoot } from './codex-memory-root.js'
 import { type CodexMemoryCandidateInput, proposeCodexMemoryCandidate } from './memory-propose.js'
 import { identifyCodexProject } from './project-id.js'
@@ -7,7 +7,7 @@ import { appendCodexReviewSummary } from './review-summary-store.js'
 import { recentTranscriptMessages, type TranscriptMessage } from './transcript.js'
 import type { AppConfig } from '../config.js'
 import type { CallModelInput, ModelResponse } from '../llm-client.js'
-import type { MemoryDomain, MemoryScope, MemorySource, MemoryStrength, MemoryType } from '../memory/types.js'
+import type { MemoryDomain, MemoryEvidence, MemoryScope, MemorySource, MemoryStrength, MemoryType } from '../memory/types.js'
 
 export type CodexReviewSummaryResult =
   | { action: 'noop'; reason: string }
@@ -84,7 +84,7 @@ export async function runCodexReviewSummary(input: RunCodexReviewSummaryInput): 
     const candidateIds: string[] = []
 
     for (const candidate of parsed.candidates) {
-      const safeCandidate = redactCandidate(candidate, runId, summary, outputRedaction)
+      const safeCandidate = redactCandidate(candidate, runId, input.sessionId, summary, outputRedaction)
       if (safeCandidate === undefined) {
         continue
       }
@@ -171,6 +171,7 @@ function formatMessages(messages: TranscriptMessage[]): string {
 function redactCandidate(
   value: unknown,
   runId: string,
+  sessionId: string | undefined,
   redactedSummary: string,
   redactor: ReturnType<typeof createOutputRedactor>
 ): CodexMemoryCandidateInput | undefined {
@@ -185,6 +186,7 @@ function redactCandidate(
     return undefined
   }
 
+  const source = parseEnum(value.source, SOURCES)
   const candidate: CodexMemoryCandidateInput = {
     domain,
     type,
@@ -192,8 +194,8 @@ function redactCandidate(
     scope: parseEnum(value.scope, SCOPES),
     content: redactor.redact(content),
     normalizedKey: redactOptionalString(value.normalizedKey, redactor),
-    source: parseEnum(value.source, SOURCES),
-    evidence: redactEvidence(value.evidence, runId, redactedSummary, redactor),
+    source,
+    evidence: redactEvidence(value.evidence, runId, sessionId, redactedSummary, source ?? 'assistant_observed', redactor),
     scores: parseScores(value.scores),
     tags: redactTags(value.tags, redactor)
   }
@@ -204,9 +206,11 @@ function redactCandidate(
 function redactEvidence(
   value: unknown,
   runId: string,
+  sessionId: string | undefined,
   redactedSummary: string,
+  sourceKind: MemorySource,
   redactor: ReturnType<typeof createOutputRedactor>
-): Array<{ runId?: string; summary?: string; quote?: string }> {
+): MemoryEvidence[] {
   const evidence = Array.isArray(value)
     ? value.flatMap((entry) => {
         if (!isRecord(entry)) {
@@ -217,14 +221,47 @@ function redactEvidence(
         if (summary === undefined && quote === undefined) {
           return []
         }
-        return [{ runId, summary, quote }]
+        return [evidenceEntry({ runId, sessionId, summary, quote, sourceKind })]
       })
     : []
 
   if (evidence.length > 0) {
     return evidence
   }
-  return [{ runId, summary: redactedSummary }]
+  return [evidenceEntry({ runId, sessionId, summary: redactedSummary, sourceKind })]
+}
+
+export function stableEvidenceGroupId(input: {
+  runId?: string
+  sessionId?: string
+  summary?: string
+  quote?: string
+}): string {
+  return createHash('sha256')
+    .update(JSON.stringify({
+      runId: input.runId ?? null,
+      sessionId: input.sessionId ?? null,
+      summary: input.summary ?? null,
+      quote: input.quote ?? null
+    }))
+    .digest('hex')
+}
+
+function evidenceEntry(input: {
+  runId: string
+  sessionId: string | undefined
+  summary?: string
+  quote?: string
+  sourceKind: MemorySource
+}): MemoryEvidence {
+  return {
+    runId: input.runId,
+    ...(input.sessionId === undefined ? {} : { sessionId: input.sessionId }),
+    summary: input.summary,
+    quote: input.quote,
+    sourceKind: input.sourceKind,
+    evidenceGroupId: stableEvidenceGroupId(input)
+  }
 }
 
 function redactTags(value: unknown, redactor: ReturnType<typeof createOutputRedactor>): string[] | undefined {

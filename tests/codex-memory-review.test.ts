@@ -278,6 +278,17 @@ describe('Codex pending memory review', () => {
     expect(pending).toContain(changedCandidate.content)
   })
 
+  it('treats evidence grouping metadata as review-significant', () => {
+    const candidate = createPending({
+      evidence: [{ runId: 'run-1', summary: 'User confirmed.', evidenceGroupId: 'group-1' }]
+    })
+    const changed = createPending({
+      evidence: [{ runId: 'run-1', summary: 'User confirmed.', evidenceGroupId: 'group-2' }]
+    })
+
+    expect(reviewHashForPendingMemory(changed)).not.toBe(reviewHashForPendingMemory(candidate))
+  })
+
   it('blocks promote when validator rejects the candidate', async () => {
     const home = await createTempDir('cyrene-review-home-')
     vi.stubEnv('HOME', home)

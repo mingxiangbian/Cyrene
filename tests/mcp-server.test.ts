@@ -13,6 +13,7 @@ import {
   handleMemoryPromote,
   handleMemoryReject
 } from '../src/mcp/tools/memory-review.js'
+import { handleMemoryDreamRun, handleMemoryProfileGet } from '../src/mcp/tools/memory-dream.js'
 
 const execFileAsync = promisify(execFile)
 const originalHome = process.env.HOME
@@ -119,6 +120,19 @@ describe('Cyrene MCP server', () => {
     expect(promoteJson.result.action).toBe('not_found')
   })
 
+  it('handles memory dream and profile MCP tools as JSON text', async () => {
+    const home = await createTempDir('cyrene-mcp-memory-dream-home-')
+    vi.stubEnv('HOME', home)
+    const cwd = await createTempDir('cyrene-mcp-memory-dream-project-')
+
+    const dreamJson = JSON.parse((await handleMemoryDreamRun({ cwd, stage: 'light' }, process.cwd())).content[0]?.text ?? '{}')
+    expect(dreamJson.roots[0]).toMatchObject({ stage: 'light' })
+
+    const profileJson = JSON.parse((await handleMemoryProfileGet({ cwd }, process.cwd())).content[0]?.text ?? '{}')
+    expect(profileJson.project).toBeDefined()
+    expect(profileJson.content).toEqual(expect.any(String))
+  })
+
   it('requires explicit user consent in memory review tool descriptions', async () => {
     const source = await readFile(new URL('../src/mcp/mcp-server.ts', import.meta.url), 'utf8')
 
@@ -144,6 +158,8 @@ describe('Cyrene MCP server', () => {
       expect(names).toContain('cyrene_memory_pending_get')
       expect(names).toContain('cyrene_memory_promote')
       expect(names).toContain('cyrene_memory_reject')
+      expect(names).toContain('cyrene_memory_dream_run')
+      expect(names).toContain('cyrene_memory_profile_get')
     } finally {
       await client.close()
     }

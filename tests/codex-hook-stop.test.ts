@@ -115,6 +115,14 @@ describe('Codex Stop hook runtime', () => {
     const identity = await identifyCodexProject(cwd)
     const pending = await readFile(join(codexProjectMemoryRoot(identity.projectId), 'pending.jsonl'), 'utf8')
     expect(pending).toContain('以后默认 Cyrene 的 spec 和 plan 用中文写。')
+    const [pendingRecord] = pending.trim().split('\n').map((line) => JSON.parse(line) as {
+      evidence: Array<{ sessionId?: string; evidenceGroupId?: string; sourceKind?: string }>
+    })
+    expect(pendingRecord.evidence[0]).toMatchObject({
+      sessionId: 's1',
+      sourceKind: 'user_explicit'
+    })
+    expect(pendingRecord.evidence[0]?.evidenceGroupId).toMatch(/^[a-f0-9]{64}$/)
     await expect(readFile(join(codexProjectMemoryRoot(identity.projectId), 'index.jsonl'), 'utf8')).rejects.toMatchObject({
       code: 'ENOENT'
     })

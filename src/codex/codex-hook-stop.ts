@@ -3,7 +3,7 @@ import { createDefaultConfig, type AppConfig } from '../config.js'
 import { callModel as defaultCallModel } from '../llm-client.js'
 import { listCodexPendingMemories } from './memory-review.js'
 import { proposeCodexMemoryCandidate } from './memory-propose.js'
-import { runCodexReviewSummary, type RunCodexReviewSummaryInput } from './review-summary-runtime.js'
+import { runCodexReviewSummary, stableEvidenceGroupId, type RunCodexReviewSummaryInput } from './review-summary-runtime.js'
 import { parseTranscriptMessages, type TranscriptMessage } from './transcript.js'
 
 export interface CodexStopHookPayload {
@@ -199,6 +199,7 @@ async function proposeExplicitMemoryCandidate(
   instruction: string
 ): Promise<Awaited<ReturnType<typeof proposeCodexMemoryCandidate>>> {
   const runId = [asString(payload.session_id), asString(payload.turn_id)].filter(Boolean).join(':') || undefined
+  const sessionId = asString(payload.session_id)
   const content = instruction.slice(0, 500)
   return proposeCodexMemoryCandidate({
     cwd,
@@ -212,6 +213,14 @@ async function proposeExplicitMemoryCandidate(
       evidence: [
         {
           runId,
+          sessionId,
+          sourceKind: 'user_explicit',
+          evidenceGroupId: stableEvidenceGroupId({
+            runId,
+            sessionId,
+            quote: content,
+            summary: 'Codex Stop hook captured explicit durable user instruction.'
+          }),
           quote: content,
           summary: 'Codex Stop hook captured explicit durable user instruction.'
         }

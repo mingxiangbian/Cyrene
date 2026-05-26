@@ -1,6 +1,12 @@
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js'
 import { continuityGetInputSchema, handleContinuityGet } from './tools/continuity-get.js'
+import {
+  handleMemoryDreamRun,
+  handleMemoryProfileGet,
+  memoryDreamRunInputSchema,
+  memoryProfileGetInputSchema
+} from './tools/memory-dream.js'
 import { handleMemoryPropose, memoryProposeInputSchema } from './tools/memory-propose.js'
 import {
   handleMemoryPendingGet,
@@ -82,6 +88,24 @@ export function createCyreneMcpServer(options: { cwd: string }): McpServer {
       inputSchema: memoryReviewDecisionInputSchema
     },
     async (input) => handleMemoryReject(input, options.cwd)
+  )
+
+  server.registerTool(
+    'cyrene_memory_dream_run',
+    {
+      description: 'Run the Cyrene Codex memory dream pass for pending memory maintenance and gated promotion.',
+      inputSchema: memoryDreamRunInputSchema
+    },
+    async (input) => handleMemoryDreamRun(input, options.cwd)
+  )
+
+  server.registerTool(
+    'cyrene_memory_profile_get',
+    {
+      description: 'Get the effective Cyrene MODEL_PROFILE.md context for global and current project memory.',
+      inputSchema: memoryProfileGetInputSchema
+    },
+    async (input) => handleMemoryProfileGet(input, options.cwd)
   )
 
   return server

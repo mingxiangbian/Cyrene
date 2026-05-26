@@ -4,11 +4,16 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { promisify } from 'node:util'
 import { afterEach, describe, expect, it } from 'vitest'
+import { codexGlobalMemoryRoot, codexProjectMemoryRoot } from '../src/codex/codex-memory-root.js'
+import { identifyCodexProject } from '../src/codex/project-id.js'
+import type { PendingMemory } from '../src/memory/types.js'
 
 const execFileAsync = promisify(execFile)
+const originalHome = process.env.HOME
 const tempDirs: string[] = []
 
 afterEach(async () => {
+  process.env.HOME = originalHome
   await Promise.all(tempDirs.splice(0).map((dir) => rm(dir, { recursive: true, force: true })))
 })
 
@@ -21,6 +26,36 @@ async function createTempDir(prefix: string): Promise<string> {
 function cliEnv(home: string): NodeJS.ProcessEnv {
   const { FORCE_COLOR: _forceColor, NO_COLOR: _noColor, ...env } = process.env
   return { ...env, HOME: home, CYRENE_MEMORY_AUTO_EXTRACT: '0' }
+}
+
+function createPending(): PendingMemory {
+  return {
+    id: 'cli-pending-1',
+    domain: 'procedural',
+    type: 'procedural_rule',
+    strength: 'hard',
+    scope: 'project',
+    status: 'pending',
+    content: 'CLI dream promotes repeated pending memory.',
+    normalizedKey: 'cli-dream-promotes-pending',
+    evidence: [
+      { runId: 'run-1', evidenceGroupId: 'group-1', summary: 'First.' },
+      { runId: 'run-2', evidenceGroupId: 'group-2', summary: 'Second.' }
+    ],
+    source: 'user_explicit',
+    scores: {
+      evidenceStrength: 0.95,
+      stability: 0.9,
+      usefulness: 0.9,
+      safety: 0.95,
+      sensitivity: 0.1
+    },
+    seenCount: 2,
+    firstSeenAt: '2026-05-25T00:00:00.000Z',
+    lastSeenAt: '2026-05-25T01:00:00.000Z',
+    expiresAt: '2026-06-24T00:00:00.000Z',
+    tags: ['cli']
+  }
 }
 
 describe('cyrene codex CLI', () => {
@@ -264,5 +299,46 @@ describe('cyrene codex CLI', () => {
     expect(result.stdout).toContain('status: ready')
     expect(result.stdout).toContain('stop hook: missing')
     expect(result.stdout).toContain('advisory: optional Stop hook is not installed')
+  })
+
+  it('runs memory dream from the CLI', async () => {
+    const home = await createTempDir('cyrene-codex-cli-dream-home-')
+    process.env.HOME = home
+    const identity = await identifyCodexProject(process.cwd())
+    const memoryRoot = codexProjectMemoryRoot(identity.projectId)
+    await mkdir(memoryRoot, { recursive: true })
+    await writeFile(join(memoryRoot, 'pending.jsonl'), `${JSON.stringify(createPending())}\n`)
+
+    const result = await execFileAsync(
+      process.execPath,
+      ['node_modules/tsx/dist/cli.mjs', 'src/main.ts', 'codex', 'memory', 'dream', '--stage', 'deep'],
+      { env: cliEnv(home) }
+    )
+
+    expect(result.stderr).toBe('')
+    const parsed = JSON.parse(result.stdout) as { roots: Array<{ promoted: number }> }
+    expect(parsed.roots.some((root) => root.promoted === 1)).toBe(true)
+  })
+
+  it('prints effective memory profile from the CLI', async () => {
+    const home = await createTempDir('cyrene-codex-cli-profile-home-')
+    process.env.HOME = home
+    const identity = await identifyCodexProject(process.cwd())
+    const projectMemoryRoot = codexProjectMemoryRoot(identity.projectId)
+    const globalMemoryRoot = codexGlobalMemoryRoot()
+    await mkdir(projectMemoryRoot, { recursive: true })
+    await mkdir(globalMemoryRoot, { recursive: true })
+    await writeFile(join(globalMemoryRoot, 'MODEL_PROFILE.md'), '# Cyrene Model Profile\n\n- Global profile.\n')
+    await writeFile(join(projectMemoryRoot, 'MODEL_PROFILE.md'), '# Cyrene Model Profile\n\n- Project profile.\n')
+
+    const result = await execFileAsync(
+      process.execPath,
+      ['node_modules/tsx/dist/cli.mjs', 'src/main.ts', 'codex', 'memory', 'profile'],
+      { env: cliEnv(home) }
+    )
+
+    expect(result.stderr).toBe('')
+    expect(result.stdout).toContain('Global profile.')
+    expect(result.stdout).toContain('Project profile.')
   })
 })
