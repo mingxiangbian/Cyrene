@@ -24,7 +24,7 @@ export async function formatCodexDoctor(input: { cwd: string; configPath?: strin
   const cyreneMcpCommand = cyreneMcpBlock === undefined ? undefined : readDoctorMcpCommand(cyreneMcpBlock)
   const mcpCommandFreshness = cyreneMcpCommand === undefined ? undefined : readDoctorMcpCommandFreshness(cyreneMcpCommand)
   const mcpCommandAction = mcpCommandFreshness === 'stale or external'
-    ? '  action: rerun codex install --dev from the intended repo'
+    ? '  action: rerun codex install --dev and update [mcp_servers.cyrene] from its printed config'
     : undefined
   const agentmemoryEnabled = hasEnabledMcpServer(configText, 'agentmemory')
   const skillPath = join(homedir(), '.agents', 'skills', 'cyrene-continuity', 'SKILL.md')

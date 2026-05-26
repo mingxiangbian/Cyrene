@@ -119,7 +119,7 @@ describe('cyrene codex CLI', () => {
     expect(result.stdout).toContain('mcp command freshness: stale or external')
     expect(result.stdout).toContain('agentmemory: enabled')
     expect(result.stdout).toContain('status: not ready')
-    expect(result.stdout).toContain('action: rerun codex install --dev from the intended repo')
+    expect(result.stdout).toContain('action: rerun codex install --dev and update [mcp_servers.cyrene] from its printed config')
   })
 
   it('doctor is not ready until the Cyrene skill is registered', async () => {
@@ -200,6 +200,7 @@ describe('cyrene codex CLI', () => {
 
   it('install --dev creates only the skill symlink and Cyrene Codex state root', async () => {
     const home = await createTempDir('cyrene-codex-install-home-')
+    const repoRoot = process.cwd()
     const codexConfig = join(home, '.codex', 'config.toml')
     await mkdir(join(home, '.codex'), { recursive: true })
     await writeFile(codexConfig, 'existing = true\n')
@@ -212,6 +213,11 @@ describe('cyrene codex CLI', () => {
 
     expect(result.stderr).toBe('')
     expect(result.stdout).toContain('[mcp_servers.cyrene]')
+    expect(result.stdout).toContain('command = "npm"')
+    expect(result.stdout).toContain('--prefix')
+    expect(result.stdout).toContain(repoRoot)
+    expect(result.stdout).toContain('mcp-server')
+    expect(result.stdout).toContain('--stdio')
     expect(result.stdout).toContain('Disable agentmemory before validating Cyrene')
     await expect(readFile(join(home, '.agents', 'skills', 'cyrene-continuity', 'SKILL.md'), 'utf8')).resolves.toContain(
       'Cyrene Continuity Skill'

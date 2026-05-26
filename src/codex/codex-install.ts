@@ -5,6 +5,7 @@ import { fileURLToPath } from 'node:url'
 import { codexGlobalRoot } from './codex-memory-root.js'
 
 export async function installCodexDevBridge(): Promise<string> {
+  const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), '../..')
   const skillSource = resolve(
     dirname(fileURLToPath(import.meta.url)),
     '..',
@@ -32,8 +33,8 @@ export async function installCodexDevBridge(): Promise<string> {
     'Add this MCP config manually to ~/.codex/config.toml:',
     '',
     '[mcp_servers.cyrene]',
-    'command = "cyrene"',
-    'args = ["mcp-server", "--stdio"]',
+    'command = "npm"',
+    `args = ${JSON.stringify(['--prefix', repoRoot, 'run', '--silent', 'dev', '--', 'mcp-server', '--stdio'])}`,
     'enabled = true',
     'required = false',
     'startup_timeout_sec = 20',
