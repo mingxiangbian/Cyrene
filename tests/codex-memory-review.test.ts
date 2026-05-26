@@ -486,13 +486,49 @@ describe('Codex pending memory review', () => {
     await writeFile(join(memoryRoot, 'projections', 'PERSONAL.md'), generated, 'utf8')
     await writeFile(join(memoryRoot, 'projections', 'AFFECT.md'), generated, 'utf8')
 
-    await expect(Promise.all([
-      renderMemoryProjectionsFromRoot(memoryRoot),
-      renderMemoryProjectionsFromRoot(memoryRoot),
-      renderMemoryProjectionsFromRoot(memoryRoot)
-    ])).resolves.toHaveLength(3)
+    await expect(Promise.all(
+      Array.from({ length: 20 }, () => renderMemoryProjectionsFromRoot(memoryRoot))
+    )).resolves.toHaveLength(20)
 
     await expect(readFile(join(memoryRoot, 'MODEL_PROFILE.md'), 'utf8')).resolves.toContain('# Cyrene Model Profile')
+  })
+
+  it('treats legacy cleanup ENOENT after checks as already cleaned', async () => {
+    const memoryRoot = await createTempDir('cyrene-review-memory-root-')
+    const generated = '<!-- Generated from index.jsonl. Do not edit manually. -->\n\nold\n'
+    const projectionsDir = join(memoryRoot, 'projections')
+    await mkdir(projectionsDir)
+    await writeFile(join(memoryRoot, 'MEMORY.md'), generated, 'utf8')
+    await writeFile(join(projectionsDir, 'MEMORY.md'), generated, 'utf8')
+
+    vi.resetModules()
+    vi.doMock('node:fs/promises', async () => {
+      const actual = await vi.importActual<typeof import('node:fs/promises')>('node:fs/promises')
+      return {
+        ...actual,
+        readFile: vi.fn(async (...args: Parameters<typeof actual.readFile>) => {
+          if (String(args[0]).endsWith('/projections/MEMORY.md')) {
+            throw Object.assign(new Error('removed during cleanup'), { code: 'ENOENT' })
+          }
+          return actual.readFile(...args)
+        }),
+        readdir: vi.fn(async (...args: Parameters<typeof actual.readdir>) => {
+          if (String(args[0]) === projectionsDir) {
+            throw Object.assign(new Error('removed during cleanup'), { code: 'ENOENT' })
+          }
+          return actual.readdir(...args)
+        })
+      }
+    })
+
+    try {
+      const exporter = await import('../src/memory/memory-exporter.js')
+      await expect(exporter.renderMemoryProjectionsFromRoot(memoryRoot)).resolves.toBeUndefined()
+      await expect(readFile(join(memoryRoot, 'MODEL_PROFILE.md'), 'utf8')).resolves.toContain('# Cyrene Model Profile')
+    } finally {
+      vi.doUnmock('node:fs/promises')
+      vi.resetModules()
+    }
   })
 
   it('returns a compact pending review notice', async () => {

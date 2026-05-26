@@ -175,7 +175,13 @@ async function removeLegacyGeneratedProjectionFile(root: string, legacyFile: str
     return
   }
 
-  const content = await readFile(targetPath, 'utf8')
+  let content
+  try {
+    content = await readFile(targetPath, 'utf8')
+  } catch (error) {
+    if (isFileErrorCode(error, 'ENOENT')) return
+    throw error
+  }
   if (!content.startsWith(GENERATED_HEADER) && !content.startsWith(OLD_GENERATED_HEADER)) {
     return
   }
@@ -199,7 +205,15 @@ async function removeEmptyLegacyProjectionsDirectory(root: string): Promise<void
     return
   }
 
-  if ((await readdir(projectionsDir)).length === 0) {
+  let entries
+  try {
+    entries = await readdir(projectionsDir)
+  } catch (error) {
+    if (isFileErrorCode(error, 'ENOENT')) return
+    throw error
+  }
+
+  if (entries.length === 0) {
     await rmdir(projectionsDir).catch((error: unknown) => {
       if (!isFileErrorCode(error, 'ENOENT') && !isFileErrorCode(error, 'ENOTEMPTY')) {
         throw error
