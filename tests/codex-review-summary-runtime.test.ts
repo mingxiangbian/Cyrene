@@ -107,28 +107,28 @@ describe('Codex review summary runtime', () => {
     await expect(readFile(join(result.memoryRoot, 'pending.jsonl'), 'utf8')).rejects.toMatchObject({ code: 'ENOENT' })
   })
 
-  it('writes pending candidates from review-safe model output', async () => {
+  it('writes pending candidates using memory schema enum values', async () => {
     const home = await createTempDir('cyrene-review-runtime-home-')
     vi.stubEnv('HOME', home)
     const cwd = await createTempDir('cyrene-review-runtime-project-')
     const candidate = {
-      domain: 'procedural',
-      type: 'procedural_rule',
-      strength: 'hard',
-      scope: 'global',
-      content: '以后在所有项目里，所有 spec 和 plan 默认用中文写。',
-      normalizedKey: 'procedural-procedural-rule-spec-plan-chinese',
-      source: 'user_explicit',
+      domain: 'personal',
+      type: 'interaction_style',
+      strength: 'session',
+      scope: 'session',
+      content: '用户偏好简洁直接的协作风格。',
+      normalizedKey: 'personal-interaction-style-direct',
+      source: 'user_implicit',
       scores: { evidenceStrength: 0.9, stability: 0.85, usefulness: 0.9, safety: 0.95, sensitivity: 0.1 },
-      evidence: [{ summary: '用户明确要求 spec 和 plan 默认用中文写。' }],
+      evidence: [{ summary: '用户反复要求直接给出可执行状态。' }],
       tags: ['codex-review-summary']
     }
 
     const result = await runCodexReviewSummary({
       cwd,
-      messages: [{ role: 'user', content: '以后 spec 和 plan 默认用中文写。' }],
+      messages: [{ role: 'user', content: '请直接给出可执行状态。' }],
       config: createConfig(cwd),
-      callModel: async () => modelResponse(JSON.stringify({ summary: '用户确认中文写作规则。', candidates: [candidate] })),
+      callModel: async () => modelResponse(JSON.stringify({ summary: '用户偏好直接协作风格。', candidates: [candidate] })),
       now: '2026-05-26T00:00:00.000Z'
     })
 
@@ -136,9 +136,46 @@ describe('Codex review summary runtime', () => {
     if (result.action !== 'pending') throw new Error(`Expected pending, got ${result.action}`)
     expect(result.candidateIds).toHaveLength(1)
     const pending = await readFile(join(result.memoryRoot, 'pending.jsonl'), 'utf8')
-    expect(pending).toContain('以后在所有项目里，所有 spec 和 plan 默认用中文写。')
+    expect(pending).toContain('用户偏好简洁直接的协作风格。')
+    expect(pending).toContain('"domain":"personal"')
+    expect(pending).toContain('"type":"interaction_style"')
+    expect(pending).toContain('"scope":"session"')
+    expect(pending).toContain('"source":"user_implicit"')
     const summaries = await readReviewSummaries(cwd)
     expect(summaries).toContain(result.candidateIds[0])
+  })
+
+  it('skips candidates with invalid memory schema enum values', async () => {
+    const home = await createTempDir('cyrene-review-runtime-home-')
+    vi.stubEnv('HOME', home)
+    const cwd = await createTempDir('cyrene-review-runtime-project-')
+
+    const result = await runCodexReviewSummary({
+      cwd,
+      sessionId: 's1',
+      turnId: 't1',
+      messages: [{ role: 'user', content: '记住这次事件。' }],
+      config: createConfig(cwd),
+      callModel: async () =>
+        modelResponse(JSON.stringify({
+          summary: '模型返回了一个不符合 memory schema 的候选。',
+          candidates: [
+            {
+              domain: 'episodic',
+              type: 'event_memory',
+              content: '这不是合法候选。'
+            }
+          ]
+        })),
+      now: '2026-05-26T00:00:00.000Z'
+    })
+
+    expect(result.action).toBe('summary')
+    if (result.action !== 'summary') throw new Error(`Expected summary, got ${result.action}`)
+    expect(result.candidateIds).toEqual([])
+    await expect(readFile(join(result.memoryRoot, 'pending.jsonl'), 'utf8')).rejects.toMatchObject({ code: 'ENOENT' })
+    const [summaryRecord] = (await readReviewSummaries(cwd)).trim().split('\n').map((line) => JSON.parse(line) as { candidateIds: string[] })
+    expect(summaryRecord.candidateIds).toEqual([])
   })
 
   it('redacts model output before writing summaries and candidates', async () => {

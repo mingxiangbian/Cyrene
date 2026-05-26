@@ -7,6 +7,7 @@ import { appendCodexReviewSummary } from './review-summary-store.js'
 import { recentTranscriptMessages, type TranscriptMessage } from './transcript.js'
 import type { AppConfig } from '../config.js'
 import type { CallModelInput, ModelResponse } from '../llm-client.js'
+import type { MemoryDomain, MemoryScope, MemorySource, MemoryStrength, MemoryType } from '../memory/types.js'
 
 export type CodexReviewSummaryResult =
   | { action: 'noop'; reason: string }
@@ -30,18 +31,28 @@ interface ParsedReviewSummary {
   candidates: unknown[]
 }
 
-const DOMAINS = ['procedural', 'project', 'preference', 'relationship', 'affective', 'episodic'] as const
+const DOMAINS = ['project', 'personal', 'relationship', 'affective', 'procedural', 'system'] as const satisfies readonly MemoryDomain[]
 const TYPES = [
-  'procedural_rule',
   'project_fact',
   'user_preference',
-  'relationship_signal',
-  'affective_state',
-  'event_memory'
-] as const
-const STRENGTHS = ['hard', 'soft', 'observed'] as const
-const SCOPES = ['global', 'project', 'thread'] as const
-const SOURCES = ['user_explicit', 'assistant_observed', 'inferred', 'imported'] as const
+  'interaction_style',
+  'relationship_boundary',
+  'affective_pattern',
+  'procedural_rule',
+  'episode',
+  'system_policy',
+  'reference'
+] as const satisfies readonly MemoryType[]
+const STRENGTHS = ['hard', 'soft', 'session'] as const satisfies readonly MemoryStrength[]
+const SCOPES = ['global', 'project', 'session'] as const satisfies readonly MemoryScope[]
+const SOURCES = [
+  'user_explicit',
+  'user_implicit',
+  'assistant_observed',
+  'tool_trace',
+  'file',
+  'legacy_markdown'
+] as const satisfies readonly MemorySource[]
 
 const FAILED_SUMMARY = 'Codex review summary failed; no transcript content persisted.'
 
@@ -172,7 +183,7 @@ function redactCandidate(
     return undefined
   }
 
-  const candidate = {
+  const candidate: CodexMemoryCandidateInput = {
     domain,
     type,
     strength: parseEnum(value.strength, STRENGTHS),
@@ -185,7 +196,7 @@ function redactCandidate(
     tags: redactTags(value.tags, redactor)
   }
 
-  return candidate as unknown as CodexMemoryCandidateInput
+  return candidate
 }
 
 function redactEvidence(
